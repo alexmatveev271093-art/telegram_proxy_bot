@@ -10,16 +10,25 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from dotenv import load_dotenv
 
 # =========================
-# Загрузка env
+# Railway / ENV
 # =========================
-load_dotenv()
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+ADMIN_ID = os.getenv("ADMIN_ID")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+
+if not BOT_TOKEN:
+    raise ValueError("Не задан BOT_TOKEN")
+
+if not ADMIN_ID:
+    raise ValueError("Не задан ADMIN_ID")
+
+if not CHANNEL_ID:
+    raise ValueError("Не задан CHANNEL_ID")
+
+ADMIN_ID = int(ADMIN_ID)
+CHANNEL_ID = int(CHANNEL_ID)
 
 # =========================
 # Настройки
@@ -38,10 +47,11 @@ CACHE_FILE = "cache.json"
 # Логи
 # =========================
 logging.basicConfig(
-    filename="bot.log",
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
+
+logger = logging.getLogger(__name__)
 
 # =========================
 # Bot
@@ -52,11 +62,16 @@ bot = Bot(
 )
 
 dp = Dispatcher()
+
+
+# =========================
+# Middleware логов
+# =========================
 @dp.update.outer_middleware()
 async def log_updates(handler, event, data):
     try:
         if hasattr(event, "message") and event.message:
-            logging.info(
+            logger.info(
                 f"Получено сообщение: "
                 f"{event.message.text} "
                 f"от {event.message.from_user.id}"
@@ -65,11 +80,6 @@ async def log_updates(handler, event, data):
         pass
 
     return await handler(event, data)
-
-# =========================
-# Debug: все сообщения
-# =========================
-
 
 
 # =========================
@@ -80,7 +90,7 @@ async def is_subscribed(user_id):
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         return member.status in ["member", "administrator", "creator"]
     except Exception as e:
-        logging.error(f"Ошибка проверки подписки: {e}")
+        logger.error(f"Ошибка проверки подписки: {e}")
         return False
 
 
@@ -88,8 +98,11 @@ async def is_subscribed(user_id):
 # Кэш
 # =========================
 def save_cache(data):
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
+    try:
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Ошибка записи cache: {e}")
 
 
 def load_cache():
@@ -101,7 +114,7 @@ def load_cache():
 
 
 # =========================
-# Загрузка MTProto списка
+# Загрузка списка прокси
 # =========================
 async def load_proxy_list():
     try:
@@ -128,16 +141,17 @@ async def load_proxy_list():
                 "secret": params["secret"][0]
             })
 
-        logging.info(f"Загружено прокси: {len(proxies)}")
+        logger.info(f"Загружено прокси: {len(proxies)}")
+
         return proxies
 
     except Exception as e:
-        logging.error(f"Ошибка загрузки списка прокси: {e}")
+        logger.error(f"Ошибка загрузки списка прокси: {e}")
         return []
 
 
 # =========================
-# Проверка порта
+# Проверка прокси
 # =========================
 async def check_proxy(proxy):
     try:
@@ -163,13 +177,13 @@ async def check_proxy(proxy):
 
 
 # =========================
-# Поиск лучших прокси
+# Поиск лучших
 # =========================
 async def find_best_proxies():
     proxy_list = await load_proxy_list()
 
     if not proxy_list:
-        logging.warning("GitHub недоступен. Использую cache.")
+        logger.warning("GitHub недоступен. Использую cache.")
         return load_cache()
 
     tasks = [check_proxy(proxy) for proxy in proxy_list[:CHECK_LIMIT]]
@@ -185,13 +199,13 @@ async def find_best_proxies():
 
     save_cache(working)
 
-    logging.info(f"Найдено рабочих прокси: {len(working)}")
+    logger.info(f"Найдено рабочих прокси: {len(working)}")
 
     return working
 
 
 # =========================
-# TG-ссылка
+# TG ссылка
 # =========================
 def build_mtproto_link(proxy):
     return (
@@ -250,7 +264,7 @@ def build_post(proxies):
 # =========================
 async def send_daily_proxies():
     try:
-        logging.info("Начинаю проверку прокси")
+        logger.info("Начинаю проверку прокси")
 
         proxies = await find_best_proxies()
 
@@ -271,15 +285,18 @@ async def send_daily_proxies():
             disable_web_page_preview=True
         )
 
-        logging.info("Прокси успешно отправлены")
+        logger.info("Прокси успешно отправлены")
 
     except Exception as e:
-        logging.error(f"Ошибка отправки: {e}")
+        logger.error(f"Ошибка отправки прокси: {e}")
 
-        await bot.send_message(
-            ADMIN_ID,
-            f"❌ Ошибка при проверке прокси:\n{str(e)}"
-        )
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                f"❌ Ошибка:\n{str(e)}"
+            )
+        except:
+            pass
 
 
 # =========================
@@ -287,7 +304,7 @@ async def send_daily_proxies():
 # =========================
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    logging.info(f"/start от {message.from_user.id}")
+    logger.info(f"/start от {message.from_user.id}")
 
     if message.from_user.id != ADMIN_ID:
         if not await is_subscribed(message.from_user.id):
@@ -299,7 +316,7 @@ async def start_handler(message: types.Message):
 
     await message.answer(
         "✅ Бот работает.\n\n"
-        "Команды:\n"
+        "Доступные команды:\n"
         "/check — проверить свежие прокси"
     )
 
@@ -309,7 +326,7 @@ async def start_handler(message: types.Message):
 # =========================
 @dp.message(Command("check"))
 async def check_handler(message: types.Message):
-    logging.info(f"/check от {message.from_user.id}")
+    logger.info(f"/check от {message.from_user.id}")
 
     if message.from_user.id != ADMIN_ID:
         await message.answer("⛔ Доступ запрещён")
@@ -317,7 +334,7 @@ async def check_handler(message: types.Message):
 
     await message.answer(
         "🔍 Начинаю сканировать прокси-адреса...\n"
-        "Это может занять 1–2 минуты."
+        "Это может занять до 2 минут."
     )
 
     await send_daily_proxies()
@@ -328,7 +345,7 @@ async def check_handler(message: types.Message):
 # =========================
 async def main():
     print("БОТ ЗАПУЩЕН")
-    logging.info("Запуск бота")
+    logger.info("БОТ ЗАПУЩЕН")
 
     scheduler = AsyncIOScheduler()
 
@@ -337,10 +354,11 @@ async def main():
 
     scheduler.start()
 
-    logging.info("Планировщик запущен")
+    logger.info("Планировщик запущен")
+    logger.info("Запускаю polling...")
 
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main()) 
