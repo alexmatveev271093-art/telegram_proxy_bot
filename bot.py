@@ -12,7 +12,7 @@ from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # =========================
-# Railway / ENV
+# Railway ENV
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
@@ -142,7 +142,6 @@ async def load_proxy_list():
             })
 
         logger.info(f"Загружено прокси: {len(proxies)}")
-
         return proxies
 
     except Exception as e:
@@ -177,7 +176,7 @@ async def check_proxy(proxy):
 
 
 # =========================
-# Поиск лучших
+# Поиск лучших прокси
 # =========================
 async def find_best_proxies():
     proxy_list = await load_proxy_list()
@@ -200,12 +199,11 @@ async def find_best_proxies():
     save_cache(working)
 
     logger.info(f"Найдено рабочих прокси: {len(working)}")
-
     return working
 
 
 # =========================
-# TG ссылка
+# Telegram ссылка на прокси
 # =========================
 def build_mtproto_link(proxy):
     return (
@@ -217,7 +215,7 @@ def build_mtproto_link(proxy):
 
 
 # =========================
-# Красивый пост
+# Формирование поста
 # =========================
 def build_post(proxies):
     text = """
@@ -242,10 +240,7 @@ def build_post(proxies):
 
     for i, item in enumerate(proxies, start=1):
         link = build_mtproto_link(item["proxy"])
-        text += (
-            f"{i}️⃣ "
-            f'<a href="{link}">Подключить прокси ⚡️</a>\n\n'
-        )
+        text += f"{i}️⃣ <a href=\"{link}\">Подключить прокси ⚡️</a>\n\n"
 
     text += """
 ━━━━━━━━━━━━━━━
@@ -255,7 +250,6 @@ def build_post(proxies):
 
 🚀 <a href="https://t.me/+T8J7eXlfvfc5NWNi">Подписаться на Good Place AI</a>
 """
-
     return text
 
 
@@ -300,7 +294,7 @@ async def send_daily_proxies():
 
 
 # =========================
-# Команда /start
+# /start
 # =========================
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
@@ -316,13 +310,13 @@ async def start_handler(message: types.Message):
 
     await message.answer(
         "✅ Бот работает.\n\n"
-        "Доступные команды:\n"
+        "Команды:\n"
         "/check — проверить свежие прокси"
     )
 
 
 # =========================
-# Команда /check
+# /check
 # =========================
 @dp.message(Command("check"))
 async def check_handler(message: types.Message):
@@ -334,7 +328,7 @@ async def check_handler(message: types.Message):
 
     await message.answer(
         "🔍 Начинаю сканировать прокси-адреса...\n"
-        "Это может занять до 2 минут."
+        "Это может занять 1–2 минуты."
     )
 
     await send_daily_proxies()
@@ -346,6 +340,10 @@ async def check_handler(message: types.Message):
 async def main():
     print("БОТ ЗАПУЩЕН")
     logger.info("БОТ ЗАПУЩЕН")
+
+    # Удаляем webhook, если остался от прошлых запусков
+    await bot.delete_webhook(drop_pending_updates=True)
+    logger.info("Webhook удалён")
 
     scheduler = AsyncIOScheduler()
 
@@ -361,4 +359,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
