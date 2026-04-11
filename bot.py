@@ -52,17 +52,24 @@ bot = Bot(
 )
 
 dp = Dispatcher()
+@dp.update.outer_middleware()
+async def log_updates(handler, event, data):
+    try:
+        if hasattr(event, "message") and event.message:
+            logging.info(
+                f"Получено сообщение: "
+                f"{event.message.text} "
+                f"от {event.message.from_user.id}"
+            )
+    except:
+        pass
 
+    return await handler(event, data)
 
 # =========================
 # Debug: все сообщения
 # =========================
-@dp.message()
-async def debug_all_messages(message: types.Message):
-    logging.info(
-        f"Получено сообщение: {message.text} "
-        f"от {message.from_user.id}"
-    )
+
 
 
 # =========================
