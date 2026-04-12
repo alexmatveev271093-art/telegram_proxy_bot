@@ -661,18 +661,22 @@ def build_post(proxies):
 
 
     text = """
+<a href="https://t.me/+T8J7eXlfvfc5NWNi">🔥 <b>Good Place AI</b> 🤖</a>
 
-🚀 <b>Свежие прокси для Telegram</b>
+⚡️ Здесь: AI • Мемы • Полезные фишки, которые реально упрощают жизнь
 
-
+📱 <a href="https://www.tiktok.com/@good_place_67">TikTok</a> | ▶️ <a href="https://www.youtube.com/@gd_place">YouTube</a>
 
 ━━━━━━━━━━━━━━━
 
+🚀 <b>СВЕЖИЕ прокси для Telegram</b>
 
+💡 ЖМИ и подключай — работает сразу  
+(если не зашёл — просто попробуй следующий)
+
+━━━━━━━━━━━━━━━
 
 🔥 <b>ТОП (самые стабильные)</b>
-
-
 
 """
 
@@ -708,7 +712,12 @@ def build_post(proxies):
 
             )
 
+ text += """
+━━━━━━━━━━━━━━━
 
+📌 <b>Сохрани пост</b>, чтобы не потерять  
+🔁 Поделись с друзьями — пригодится
+"""
 
     return text
 
