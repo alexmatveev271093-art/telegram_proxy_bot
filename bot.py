@@ -9,36 +9,28 @@ from urllib.parse import urlparse, parse_qs
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # =========================
 # Railway ENV
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = os.getenv("ADMIN_ID")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 if not BOT_TOKEN:
     raise ValueError("Не задан BOT_TOKEN")
 
-if not ADMIN_ID:
-    raise ValueError("Не задан ADMIN_ID")
-
-if not CHANNEL_ID:
-    raise ValueError("Не задан CHANNEL_ID")
-
-ADMIN_ID = int(ADMIN_ID)
-CHANNEL_ID = int(CHANNEL_ID)
-
 # =========================
 # Настройки
 # =========================
+SPONSOR_CHANNEL_ID = -1002174184458
+
 PROXY_SOURCE_URL = (
     "https://raw.githubusercontent.com/"
     "SoliSpirit/mtproto/master/all_proxies.txt"
 )
 
-MAX_PING = 1500
+MAX_PING = 250
 TOP_COUNT = 5
 CHECK_LIMIT = 50
 CACHE_FILE = "cache.json"
@@ -63,6 +55,22 @@ bot = Bot(
 
 dp = Dispatcher()
 
+# =========================
+# Кнопки
+# =========================
+start_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Поехали 🚀")]
+    ],
+    resize_keyboard=True
+)
+
+proxy_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Дай прокси")]
+    ],
+    resize_keyboard=True
+)
 
 # =========================
 # Middleware логов
@@ -72,8 +80,7 @@ async def log_updates(handler, event, data):
     try:
         if hasattr(event, "message") and event.message:
             logger.info(
-                f"Получено сообщение: "
-                f"{event.message.text} "
+                f"Сообщение: {event.message.text} "
                 f"от {event.message.from_user.id}"
             )
     except:
@@ -87,7 +94,7 @@ async def log_updates(handler, event, data):
 # =========================
 async def is_subscribed(user_id):
     try:
-        member = await bot.get_chat_member(CHANNEL_ID, user_id)
+        member = await bot.get_chat_member(SPONSOR_CHANNEL_ID, user_id)
         return member.status in ["member", "administrator", "creator"]
     except Exception as e:
         logger.error(f"Ошибка проверки подписки: {e}")
@@ -114,7 +121,7 @@ def load_cache():
 
 
 # =========================
-# Загрузка списка прокси
+# Загрузка прокси
 # =========================
 async def load_proxy_list():
     try:
@@ -198,12 +205,12 @@ async def find_best_proxies():
 
     save_cache(working)
 
-    logger.info(f"Найдено рабочих прокси: {len(working)}")
+    logger.info(f"Рабочих прокси найдено: {len(working)}")
     return working
 
 
 # =========================
-# Telegram ссылка на прокси
+# Telegram-ссылка
 # =========================
 def build_mtproto_link(proxy):
     return (
@@ -215,7 +222,7 @@ def build_mtproto_link(proxy):
 
 
 # =========================
-# Формирование поста
+# Красивый пост
 # =========================
 def build_post(proxies):
     text = """
@@ -229,37 +236,37 @@ def build_post(proxies):
 
 🚀 <b>Свежие прокси для Telegram</b>
 
-💡 Жми и подключай — работает сразу  
+💡 ЖМИ и подключай — работает сразу  
 (если не зашёл — просто попробуй следующий)
 
 ━━━━━━━━━━━━━━━
 
-🔥 <b>ТОП (самые стабильные)</b>
+🔥 <b>ТОП-5 (самые стабильные, разлетаются как пирожки, поэтому не зевай)</b>
 
 """
 
     for i, item in enumerate(proxies, start=1):
         link = build_mtproto_link(item["proxy"])
-        text += f"{i}️⃣ <a href=\"{link}\">Подключить прокси ⚡️</a>\n\n"
+        text += (
+            f"{i}️⃣ "
+            f'<a href="{link}">Подключить прокси⚡️</a>\n\n'
+        )
 
     text += """
 ━━━━━━━━━━━━━━━
 
-📌 <b>Сохрани пост</b>, чтобы не потерять  
-🔁 Поделись с друзьями — пригодится
-
-🚀 <a href="https://t.me/+T8J7eXlfvfc5NWNi">Подписаться на Good Place AI</a>
+📌 <b>СОХРАНИ ПОСТ</b>, чтобы не потерять  
+🔁 ПОДЕЛИСЬ с друзьями — пригодится
 """
+
     return text
 
 
 # =========================
 # Отправка прокси
 # =========================
-async def send_daily_proxies():
+async def send_proxies_to_user(chat_id):
     try:
-        logger.info("Начинаю проверку прокси")
-
         proxies = await find_best_proxies()
 
         if not proxies:
@@ -268,29 +275,18 @@ async def send_daily_proxies():
             text = build_post(proxies)
 
         await bot.send_message(
-            ADMIN_ID,
+            chat_id,
             text,
             disable_web_page_preview=True
         )
-
-        await bot.send_message(
-            CHANNEL_ID,
-            text,
-            disable_web_page_preview=True
-        )
-
-        logger.info("Прокси успешно отправлены")
 
     except Exception as e:
-        logger.error(f"Ошибка отправки прокси: {e}")
+        logger.error(f"Ошибка отправки: {e}")
 
-        try:
-            await bot.send_message(
-                ADMIN_ID,
-                f"❌ Ошибка:\n{str(e)}"
-            )
-        except:
-            pass
+        await bot.send_message(
+            chat_id,
+            f"❌ Ошибка:\n{str(e)}"
+        )
 
 
 # =========================
@@ -298,32 +294,45 @@ async def send_daily_proxies():
 # =========================
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    logger.info(f"/start от {message.from_user.id}")
-
-    if message.from_user.id != ADMIN_ID:
-        if not await is_subscribed(message.from_user.id):
-            await message.answer(
-                "❌ Сначала подпишитесь на канал:\n"
-                "https://t.me/+T8J7eXlfvfc5NWNi"
-            )
-            return
-
     await message.answer(
-        "✅ Бот работает.\n\n"
-        "Команды:\n"
-        "/check — проверить свежие прокси"
+        "👋 Добро пожаловать!\n\n"
+        "Нажми кнопку ниже, чтобы начать.",
+        reply_markup=start_kb
     )
 
 
 # =========================
-# /check
+# Кнопка "Поехали"
 # =========================
-@dp.message(Command("check"))
-async def check_handler(message: types.Message):
-    logger.info(f"/check от {message.from_user.id}")
+@dp.message(lambda message: message.text == "Поехали 🚀")
+async def go_handler(message: types.Message):
+    user_id = message.from_user.id
 
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещён")
+    if not await is_subscribed(user_id):
+        await message.answer(
+            "❌ Сначала подпишись на канал нашего спонсора:\n"
+            "https://t.me/+T8J7eXlfvfc5NWNi"
+        )
+        return
+
+    await message.answer(
+        "✅ Отлично! Теперь нажми кнопку ниже 👇",
+        reply_markup=proxy_kb
+    )
+
+
+# =========================
+# Кнопка "Дай прокси"
+# =========================
+@dp.message(lambda message: message.text == "Дай прокси")
+async def proxy_handler(message: types.Message):
+    user_id = message.from_user.id
+
+    if not await is_subscribed(user_id):
+        await message.answer(
+            "❌ Сначала подпишись на канал нашего спонсора:\n"
+            "https://t.me/+T8J7eXlfvfc5NWNi"
+        )
         return
 
     await message.answer(
@@ -331,7 +340,7 @@ async def check_handler(message: types.Message):
         "Это может занять 1–2 минуты."
     )
 
-    await send_daily_proxies()
+    await send_proxies_to_user(message.chat.id)
 
 
 # =========================
@@ -341,15 +350,10 @@ async def main():
     print("БОТ ЗАПУЩЕН")
     logger.info("БОТ ЗАПУЩЕН")
 
-    # Удаляем webhook, если остался от прошлых запусков
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook удалён")
 
     scheduler = AsyncIOScheduler()
-
-    scheduler.add_job(send_daily_proxies, "cron", hour=9, minute=0)
-    scheduler.add_job(send_daily_proxies, "cron", hour=18, minute=0)
-
     scheduler.start()
 
     logger.info("Планировщик запущен")
