@@ -658,8 +658,6 @@ def build_post(proxies):
 
     reserve = load_json(RESERVE_FILE, [])
 
-
-
     text = """
 <a href="https://t.me/+T8J7eXlfvfc5NWNi">🔥 <b>Good Place AI</b> 🤖</a>
 
@@ -679,8 +677,6 @@ def build_post(proxies):
 🔥 <b>ТОП (самые стабильные)</b>
 
 """
-
-
 
     for i, item in enumerate(proxies, start=1):
 
@@ -712,7 +708,7 @@ def build_post(proxies):
 
             )
 
- text += """
+    text += """
 ━━━━━━━━━━━━━━━
 
 📌 <b>Сохрани пост</b>, чтобы не потерять  
@@ -720,7 +716,6 @@ def build_post(proxies):
 """
 
     return text
-
 
 
 
