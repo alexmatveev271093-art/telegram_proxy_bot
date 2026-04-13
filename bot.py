@@ -80,7 +80,7 @@ DEFAULT_SETTINGS = {
 
     "pin_code": "7080",
 
-    "max_ping": 300,
+    "max_ping": 250,
 
     "top_count": 5
 
@@ -322,8 +322,6 @@ check_sub_kb = ReplyKeyboardMarkup(
 
         [KeyboardButton(text="Проверить подписку ✅")],
 
-        [KeyboardButton(text="↩️ Назад")]
-
     ],
 
     resize_keyboard=True
@@ -337,8 +335,6 @@ proxy_kb = ReplyKeyboardMarkup(
     keyboard=[
 
         [KeyboardButton(text="Дай прокси 🔥")],
-
-        [KeyboardButton(text="↩️ Назад")]
 
     ],
 
@@ -661,59 +657,44 @@ def build_post(proxies):
     text = """
 <a href="https://t.me/+T8J7eXlfvfc5NWNi">🔥 <b>Good Place AI</b> 🤖</a>
 
-⚡️ Здесь: AI • Мемы • Полезные фишки, которые реально упрощают жизнь
+⚡️ Здесь: AI • Мемы • Польза
 
 📱 <a href="https://www.tiktok.com/@good_place_67">TikTok</a> | ▶️ <a href="https://www.youtube.com/@gd_place">YouTube</a>
 
 ━━━━━━━━━━━━━━━
 
-🚀 <b>СВЕЖИЕ прокси для Telegram</b>
+🚀 <b>СВЕЖИЕ прокси для Telegram 👇</b>
 
-💡 ЖМИ и подключай — работает сразу  
-(если не зашёл — просто попробуй следующий)
+💡 ЖМИ и подключай — работает сразу
+(если не зашёл 🤔 — попробуй следующий 😉 — разлетаются как пирожки🔥)
 
 ━━━━━━━━━━━━━━━
 
-🔥 <b>ТОП (самые стабильные)</b>
+🔥 <b>ТОП-5 (самые стабильные):</b>
 
 """
 
     for i, item in enumerate(proxies, start=1):
-
         link = build_mtproto_link(item["proxy"])
 
         text += (
-
             f"{i}️⃣ "
-
-            f'<a href="{link}">Подключить прокси ⚡️</a>\n\n'
-
+            f'<a href="{link}">Подключить прокси 👈</a>\n\n'
         )
 
-
-
     if reserve:
-
-        text += "\n━━━━━━━━━━━━━━━\n\n📌 <b>Резерв👇</b>\n\n"
-
-
+        text += "\n━━━━━━━━━━━━━━━\n\n📌 <b>НАШ РЕЗЕРВ 👇</b>\n\n"
 
         for i, proxy in enumerate(reserve[:5], start=1):
-
             text += (
-
                 f"{i}️⃣ "
-
                 f'<a href="{proxy}">Резервный прокси ⚡️</a>\n\n'
-
             )
 
-    text += """
-━━━━━━━━━━━━━━━
-
-📌 <b>Сохрани пост</b>, чтобы не потерять  
-🔁 Поделись с друзьями — пригодится
-"""
+    text += (
+        "\n━━━━━━━━━━━━━━━\n\n"
+        "✅ <b>Поделись с друзьями ботом — пригодится 😉</b>"
+    )
 
     return text
 
@@ -727,39 +708,32 @@ def build_post(proxies):
 # =========================
 
 async def send_proxies(chat_id):
-
     try:
-
         proxies = await find_best_proxies()
 
-
-
         if not proxies:
-
-            await bot.send_message(
-
+            await safe_send(
                 chat_id,
-
-                "❌ Рабочих прокси не найдено"
-
+                "❌ Рабочих прокси не найдено",
+                reply_markup=proxy_kb
             )
-
             return
-
-
 
         text = build_post(proxies)
 
-
-
-        await bot.send_message(
-
+        await safe_send(
             chat_id,
-
             text,
+            reply_markup=proxy_kb
+        )
 
-            disable_web_page_preview=True
+    except Exception as e:
+        logger.error(f"Ошибка: {e}")
 
+        await safe_send(
+            chat_id,
+            f"❌ Ошибка:\n{str(e)}",
+            reply_markup=proxy_kb
         )
 
 
@@ -798,7 +772,7 @@ async def start_handler(message: types.Message):
 
     if is_banned(user_id):
 
-        await message.answer("⛔ Вы заблокированы.")
+        await message.answer("⛔ Вы заблокированы 🖕")
 
         return
 
@@ -814,7 +788,7 @@ async def start_handler(message: types.Message):
 
         "👋 Добро пожаловать!\n\n"
 
-        "Нажми кнопку ниже, чтобы начать.",
+        "Нажми кнопку ниже, чтобы начать 👇",
 
         reply_markup=start_kb
 
@@ -840,7 +814,7 @@ async def go_handler(message: types.Message):
 
     if is_banned(user_id):
 
-        await message.answer("⛔ Вы заблокированы.")
+        await message.answer("⛔ Вы заблокированы 🖕")
 
         return
 
@@ -870,7 +844,7 @@ async def go_handler(message: types.Message):
 
     await message.answer(
 
-        f"Подпишись на канал спонсора 👇\n"
+        f"Подпишись на канал спонсора ❤️\n"
 
         f"{settings['sponsor_link']}\n\n"
 
@@ -902,7 +876,7 @@ async def check_sub_handler(message: types.Message):
 
         await message.answer(
 
-            "✅ Подписка подтверждена.\n"
+            "✅ Подписка подтверждена\n"
 
             "Теперь можешь получить прокси 👇",
 
@@ -940,7 +914,13 @@ async def proxy_handler(message: types.Message):
 
     if is_banned(user_id):
 
-        await message.answer("⛔ Вы заблокированы.")
+        await safe_send(
+
+            message.chat.id,
+
+            "⛔ Вы заблокированы."
+
+        )
 
         return
 
@@ -952,11 +932,19 @@ async def proxy_handler(message: types.Message):
 
     if settings.get("sponsor_link"):
 
-        if not await is_subscribed(user_id):
+        subscribed = await is_subscribed(user_id)
 
-            await message.answer(
 
-                "Подпишись на канал спонсора 👇.",
+
+        if not subscribed:
+
+            await safe_send(
+
+                message.chat.id,
+
+                "❌ Сначала подпишись на канал спонсора:\n"
+
+                f"{settings['sponsor_link']}",
 
                 reply_markup=check_sub_kb
 
@@ -970,18 +958,21 @@ async def proxy_handler(message: types.Message):
 
 
 
-    await message.answer(
+    await safe_send(
+
+        message.chat.id,
 
         "🔍 Начинаю сканировать прокси-адреса...\n"
 
-        "Это может занять 1–2 минуты."
+        "Это может занять 1–2 минуты.",
+
+        reply_markup=proxy_kb
 
     )
 
 
 
     await send_proxies(message.chat.id)
-
 
 
 
@@ -1002,7 +993,7 @@ async def back_handler(message: types.Message, state: FSMContext):
 
     await message.answer(
 
-        "Главное меню:",
+        " ",
 
         reply_markup=start_kb
 
@@ -1022,7 +1013,7 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 
     await message.answer(
 
-        "Действие отменено.",
+        "Действие отменено ✅",
 
         reply_markup=start_kb
 
@@ -1061,7 +1052,7 @@ def admin_main_kb():
 
             [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🔗 Ссылка спонсора")],
 
-            [KeyboardButton(text="🔄 Проверить сейчас"), KeyboardButton(text="➕ Добавить свой прокси")],
+            [KeyboardButton(text="🔄 Проверить сейчас"), KeyboardButton(text="➕ Добавить прокси")],
 
             [KeyboardButton(text="🚫 Бан-лист"), KeyboardButton(text="📢 Рассылка")],
 
@@ -1163,7 +1154,7 @@ async def admin_command(message: types.Message, state: FSMContext):
 
     if is_banned(user_id):
 
-        await message.answer("⛔ Вы заблокированы.")
+        await message.answer("⛔ Вы заблокированы 🖕")
 
         return
 
@@ -1229,7 +1220,7 @@ async def admin_pin_input(message: types.Message, state: FSMContext):
 
         await message.answer(
 
-            "🔐 Админ-панель\n\nВыберите действие:",
+            "🔐 Админ-панель\n\nВыберите действие 👇",
 
             reply_markup=admin_main_kb()
 
@@ -1257,7 +1248,7 @@ async def admin_pin_input(message: types.Message, state: FSMContext):
 
         await message.answer(
 
-            "⛔ Вы заблокированы."
+            "⛔ Вы заблокированы 🖕"
 
         )
 
@@ -1297,7 +1288,7 @@ async def exit_admin(message: types.Message):
 
     await message.answer(
 
-        "Вы вышли из админки.",
+        "Вы вышли из админки",
 
         reply_markup=start_kb
 
