@@ -508,7 +508,8 @@ async def proxy_handler(message: types.Message):
     if not check_antispam(user_id):
         await safe_send(
             user_id,
-            "⏳ Подожди немного перед следующим запросом"
+            "⏳ Подожди немного перед следующим запросом",
+            reply_markup=proxy_kb()
         )
         return
 
