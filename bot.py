@@ -210,6 +210,7 @@ start_kb = ReplyKeyboardMarkup(
         [KeyboardButton(text="Проверить подписку ✅")]
     ],
     resize_keyboard=True
+    is_persistent=True
 )
 
 check_sub_kb = ReplyKeyboardMarkup(
@@ -217,6 +218,7 @@ check_sub_kb = ReplyKeyboardMarkup(
         [KeyboardButton(text="Проверить подписку ✅")]
     ],
     resize_keyboard=True
+    is_persistent=True
 )
 
 proxy_kb = ReplyKeyboardMarkup(
@@ -224,6 +226,7 @@ proxy_kb = ReplyKeyboardMarkup(
         [KeyboardButton(text="Дай прокси 🔥")]
     ],
     resize_keyboard=True
+    is_persistent=True
 )
 
 cancel_kb = ReplyKeyboardMarkup(
@@ -373,25 +376,51 @@ def build_mtproto_link(proxy):
 
 
 def build_post(proxies):
+ 
     reserve = load_json(RESERVE_FILE, [])
-
-    text = "🔥 Свежие MTProto прокси:\n\n"
-
+ 
+    text = """
+<a href="https://t.me/+T8J7eXlfvfc5NWNi">🔥 <b>Good Place AI</b> 🤖</a>
+ 
+⚡️ Здесь: AI • Мемы • Польза
+ 
+📱 <a href="https://www.tiktok.com/@good_place_67">TikTok</a> | ▶️ <a href="https://www.youtube.com/@gd_place">YouTube</a>
+ 
+━━━━━━━━━━━━━━━
+ 
+🚀 <b>СВЕЖИЕ прокси для Telegram 👇</b>
+ 
+💡 ЖМИ и подключай — работает сразу
+(если не зашёл 🤔 — попробуй следующий 😉 — разлетаются как пирожки🔥)
+ 
+━━━━━━━━━━━━━━━
+ 
+🔥 <b>ТОП-5 (самые стабильные):</b>
+ 
+"""
+ 
     for i, item in enumerate(proxies, start=1):
         link = build_mtproto_link(item["proxy"])
-
+ 
         text += (
             f"{i}️⃣ "
-            f'<a href="{link}">Подключить прокси</a>\n'
-            f"⚡ ping: {item['ping']} ms\n\n"
+            f'<a href="{link}">Подключить прокси 👈</a>\n\n'
         )
-
+ 
     if reserve:
-        text += "\n📌 Резерв:\n\n"
-
-        for i, link in enumerate(reserve[:5], start=1):
-            text += f"{i}️⃣ <a href=\"{link}\">Резервный прокси</a>\n\n"
-
+        text += "\n━━━━━━━━━━━━━━━\n\n📌 <b>НАШ РЕЗЕРВ 👇</b>\n\n"
+ 
+        for i, proxy in enumerate(reserve[:5], start=1):
+            text += (
+                f"{i}️⃣ "
+                f'<a href="{proxy}">Резервный прокси ⚡️</a>\n\n'
+            )
+ 
+    text += (
+        "\n━━━━━━━━━━━━━━━\n\n"
+        "✅ <b>Поделись с друзьями ботом — пригодится 😉</b>"
+    )
+ 
     return text
 
 
@@ -431,7 +460,10 @@ async def start_handler(message: types.Message):
     user_id = message.from_user.id
 
     if is_banned(user_id):
-        await safe_send(message.chat.id, "⛔ Вы заблокированы")
+        await safe_send(
+            message.chat.id,
+            "⛔ Вы заблокированы"
+        )
         return
 
     add_user(user_id)
@@ -439,19 +471,32 @@ async def start_handler(message: types.Message):
 
     settings = get_settings()
 
-    if settings.get("sponsor_link"):
+    # если спонсор отключен
+    if not settings.get("sponsor_link"):
         await safe_send(
             message.chat.id,
-            f"👋 Добро пожаловать!\n\n"
-            f"Подпишись:\n{settings['sponsor_link']}\n\n"
-            f"Потом нажми кнопку:",
-            reply_markup=check_sub_kb
+            "👋 Добро пожаловать!\n\nЖми кнопку ниже 👇",
+            reply_markup=proxy_kb
+        )
+        return
+
+    # если уже подписан — сразу кнопка прокси
+    subscribed = await is_subscribed(user_id)
+
+    if subscribed:
+        await safe_send(
+            message.chat.id,
+            "✅ Добро пожаловать!\n\nЖми кнопку ниже 👇",
+            reply_markup=proxy_kb
         )
     else:
         await safe_send(
             message.chat.id,
-            "👋 Добро пожаловать!",
-            reply_markup=proxy_kb
+            f"👋 Добро пожаловать!\n\n"
+            f"Подпишись на канал:\n"
+            f"{settings['sponsor_link']}\n\n"
+            f"Потом нажми кнопку ниже 👇",
+            reply_markup=check_sub_kb
         )
 
 
@@ -538,130 +583,1068 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 
 
 # =========================
-# ADMIN
+# ADMINS / PIN
+ 
 # =========================
+ 
 admin_sessions = {}
+ 
 admin_attempts = {}
-
-
+ 
+ 
+ 
 def is_admin(user_id):
+ 
     return admin_sessions.get(user_id, False)
-
-
+ 
+ 
+ 
 def admin_main_kb():
+ 
     return ReplyKeyboardMarkup(
+ 
         keyboard=[
-            [KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="🔄 Проверить сейчас")],
-            [KeyboardButton(text="🔒 Выйти")]
+ 
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📜 Логи")],
+ 
+            [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🔗 Ссылка спонсора")],
+ 
+            [KeyboardButton(text="🔄 Проверить сейчас"), KeyboardButton(text="➕ Добавить прокси")],
+ 
+            [KeyboardButton(text="🚫 Бан-лист"), KeyboardButton(text="📢 Рассылка")],
+ 
+            [KeyboardButton(text="👥 Пользователи"), KeyboardButton(text="🔒 Выйти")]
+ 
         ],
+ 
         resize_keyboard=True
+ 
     )
-
-
+ 
+ 
+ 
+def sponsor_kb():
+ 
+    return ReplyKeyboardMarkup(
+ 
+        keyboard=[
+ 
+            [KeyboardButton(text="✏️ Изменить ссылку")],
+ 
+            [KeyboardButton(text="🗑 Удалить ссылку")],
+ 
+            [KeyboardButton(text="↩️ Назад")]
+ 
+        ],
+ 
+        resize_keyboard=True
+ 
+    )
+ 
+ 
+ 
+def settings_kb():
+ 
+    return ReplyKeyboardMarkup(
+ 
+        keyboard=[
+ 
+            [KeyboardButton(text="🔑 Изменить PIN")],
+ 
+            [KeyboardButton(text="📶 Изменить лимит пинга")],
+ 
+            [KeyboardButton(text="🧹 Очистить кэш")],
+ 
+            [KeyboardButton(text="↩️ Назад")]
+ 
+        ],
+ 
+        resize_keyboard=True
+ 
+    )
+ 
+ 
+ 
+def ban_kb():
+ 
+    return ReplyKeyboardMarkup(
+ 
+        keyboard=[
+ 
+            [KeyboardButton(text="➕ Забанить ID")],
+ 
+            [KeyboardButton(text="🔓 Разбанить")],
+ 
+            [KeyboardButton(text="🗑 Очистить бан-лист")],
+ 
+            [KeyboardButton(text="↩️ Назад")]
+ 
+        ],
+ 
+        resize_keyboard=True
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# /admin
+ 
+# =========================
+ 
 @dp.message(Command("admin"))
+ 
 async def admin_command(message: types.Message, state: FSMContext):
-    if is_banned(message.from_user.id):
-        await safe_send(message.chat.id, "⛔ Вы заблокированы")
-        return
-
-    await state.set_state(UserStates.waiting_admin_pin)
-
-    await safe_send(
-        message.chat.id,
-        "Введите PIN:",
-        reply_markup=cancel_kb
-    )
-
-
-@dp.message(UserStates.waiting_admin_pin)
-async def admin_pin_input(message: types.Message, state: FSMContext):
-    settings = get_settings()
+ 
     user_id = message.from_user.id
-
-    if message.text == settings["pin_code"]:
-        admin_sessions[user_id] = True
-        admin_attempts[user_id] = 0
-
-        await state.clear()
-
-        await safe_send(
-            message.chat.id,
-            "🔐 Админка",
-            reply_markup=admin_main_kb()
-        )
+ 
+ 
+    if is_banned(user_id):
+ 
+        await message.answer("⛔ Вы заблокированы 🖕")
+ 
         return
-
-    admin_attempts[user_id] = admin_attempts.get(user_id, 0) + 1
-
-    if admin_attempts[user_id] >= 3:
-        ban_user(user_id)
-
-        await state.clear()
-
-        await safe_send(
-            message.chat.id,
-            "⛔ Вы заблокированы"
-        )
-        return
-
-    await safe_send(
-        message.chat.id,
-        "❌ Неверный PIN",
+ 
+ 
+    await state.set_state(UserStates.waiting_admin_pin)
+ 
+ 
+    await message.answer(
+ 
+        "Введите пин-код ✅",
+ 
         reply_markup=cancel_kb
+ 
     )
-
-
-@dp.message(F.text == "📊 Статистика")
-async def stats_handler(message: types.Message):
-    if not is_admin(message.from_user.id):
+ 
+ 
+ 
+# =========================
+ 
+# PIN INPUT
+ 
+# =========================
+ 
+@dp.message(UserStates.waiting_admin_pin)
+ 
+async def admin_pin_input(message: types.Message, state: FSMContext):
+ 
+    user_id = message.from_user.id
+ 
+    settings = get_settings()
+ 
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await message.answer("Отмена.", reply_markup=start_kb)
+ 
         return
-
-    users = load_json(USERS_FILE, [])
-    bans = load_json(BANS_FILE, [])
-    logs = load_json(LOGS_FILE, [])
-
-    proxy_requests = len([
-        x for x in logs if "прокси" in x["action"]
-    ])
-
-    text = (
-        f"📊 Статистика\n\n"
-        f"👥 Пользователей: {len(users)}\n"
-        f"🚀 Запросов прокси: {proxy_requests}\n"
-        f"🚫 Бан: {len(bans)}"
-    )
-
-    await safe_send(
-        message.chat.id,
-        text,
-        reply_markup=admin_main_kb()
-    )
-
-
-@dp.message(F.text == "🔄 Проверить сейчас")
-async def admin_check_now(message: types.Message):
-    if not is_admin(message.from_user.id):
+ 
+ 
+    if message.text == settings["pin_code"]:
+ 
+        admin_sessions[user_id] = True
+ 
+        admin_attempts[user_id] = 0
+ 
+ 
+        add_log(user_id, "вошёл в админку")
+ 
+ 
+        await state.clear()
+ 
+ 
+        await message.answer(
+ 
+            "🔐 Админ-панель\n\nВыберите действие 👇",
+ 
+            reply_markup=admin_main_kb()
+ 
+        )
+ 
         return
-
-    await safe_send(
-        message.chat.id,
-        "🔍 Проверка...",
-        reply_markup=admin_main_kb()
+ 
+ 
+    admin_attempts[user_id] = admin_attempts.get(user_id, 0) + 1
+ 
+ 
+    if admin_attempts[user_id] >= 3:
+ 
+        ban_user(user_id)
+ 
+        add_log(user_id, "забанен за 3 неверных PIN")
+ 
+ 
+        await state.clear()
+ 
+ 
+        await message.answer(
+ 
+            "⛔ Вы заблокированы 🖕"
+ 
+        )
+ 
+        return
+ 
+ 
+    await message.answer(
+ 
+        "❌ Вы не правильно ввели пин-код. Теперь я слежу за ВАМИ",
+ 
+        reply_markup=cancel_kb
+ 
     )
-
-    await send_proxies(message.chat.id)
-
-
+ 
+ 
+ 
+# =========================
+ 
+# EXIT ADMIN
+ 
+# =========================
+ 
 @dp.message(F.text == "🔒 Выйти")
+ 
 async def exit_admin(message: types.Message):
-    admin_sessions[message.from_user.id] = False
-
-    await safe_send(
-        message.chat.id,
-        "Вы вышли",
+ 
+    user_id = message.from_user.id
+ 
+ 
+    admin_sessions[user_id] = False
+ 
+ 
+    await message.answer(
+ 
+        "Вы вышли из админки",
+ 
         reply_markup=start_kb
+ 
     )
+ 
+ 
+ 
+# =========================
+ 
+# STATS
+ 
+# =========================
+ 
+@dp.message(F.text == "📊 Статистика")
+ 
+async def stats_handler(message: types.Message):
+ 
+    user_id = message.from_user.id
+ 
+ 
+    if not is_admin(user_id):
+ 
+        return
+ 
+ 
+    users = load_json(USERS_FILE, [])
+ 
+    logs = load_json(LOGS_FILE, [])
+ 
+    bans = load_json(BANS_FILE, [])
+ 
+ 
+    proxy_requests = len([
+ 
+        x for x in logs if "прокси" in x["action"]
+ 
+    ])
+ 
+ 
+    text = (
+ 
+        f"📊 <b>Статистика</b>\n\n"
+ 
+        f"👥 Пользователей: {len(users)}\n"
+ 
+        f"🚀 Запросов прокси: {proxy_requests}\n"
+ 
+        f"🚫 Забанено: {len(bans)}"
+ 
+    )
+ 
+ 
+    await message.answer(
+ 
+        text,
+ 
+        reply_markup=admin_main_kb()
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# LOGS
+ 
+# =========================
+ 
+@dp.message(F.text == "📜 Логи")
+ 
+async def logs_handler(message: types.Message):
+ 
+    user_id = message.from_user.id
+ 
+ 
+    if not is_admin(user_id):
+ 
+        return
+ 
+ 
+    logs = load_json(LOGS_FILE, [])[:20]
+ 
+ 
+    if not logs:
+ 
+        text = "Логи пусты."
+ 
+    else:
+ 
+        text = "📜 <b>Последние действия:</b>\n\n"
+ 
+ 
+        for log in logs:
+ 
+            text += (
+ 
+                f"{log['time']} — "
+ 
+                f"ID {log['user_id']} — "
+ 
+                f"{log['action']}\n"
+ 
+            )
+ 
+ 
+    await message.answer(
+ 
+        text,
+ 
+        reply_markup=admin_main_kb()
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# SETTINGS
+ 
+# =========================
+ 
+@dp.message(F.text == "⚙️ Настройки")
+ 
+async def settings_handler(message: types.Message):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await message.answer(
+ 
+        "⚙️ Настройки",
+ 
+        reply_markup=settings_kb()
+ 
+    )
+ 
+ 
+ 
+@dp.message(F.text == "🔑 Изменить PIN")
+ 
+async def change_pin_start(message: types.Message, state: FSMContext):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await state.set_state(UserStates.waiting_new_pin)
+ 
+ 
+    await message.answer(
+ 
+        "Введите новый PIN:",
+ 
+        reply_markup=cancel_kb
+ 
+    )
+ 
+ 
+ 
+@dp.message(UserStates.waiting_new_pin)
+ 
+async def save_new_pin(message: types.Message, state: FSMContext):
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await message.answer("Отмена.", reply_markup=settings_kb())
+ 
+        return
+ 
+ 
+    settings = get_settings()
+ 
+    settings["pin_code"] = message.text
+ 
+    save_settings(settings)
+ 
+ 
+    await state.clear()
+ 
+ 
+    await message.answer(
+ 
+        "✅ PIN обновлён",
+ 
+        reply_markup=settings_kb()
+ 
+    )
+ 
+ 
+ 
+@dp.message(F.text == "📶 Изменить лимит пинга")
+ 
+async def ping_change_start(message: types.Message, state: FSMContext):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await state.set_state(UserStates.waiting_new_ping)
+ 
+ 
+    await message.answer(
+ 
+        "Введите новый лимит пинга:",
+ 
+        reply_markup=cancel_kb
+ 
+    )
+ 
+ 
+ 
+@dp.message(UserStates.waiting_new_ping)
+ 
+async def save_new_ping(message: types.Message, state: FSMContext):
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await message.answer("Отмена.", reply_markup=settings_kb())
+ 
+        return
+ 
+ 
+    if not message.text.isdigit():
+ 
+        await message.answer("Введите число.")
+ 
+        return
+ 
+ 
+    settings = get_settings()
+ 
+    settings["max_ping"] = int(message.text)
+ 
+    save_settings(settings)
+ 
+ 
+    await state.clear()
+ 
+ 
+    await message.answer(
+ 
+        "✅ Лимит обновлён",
+ 
+        reply_markup=settings_kb()
+ 
+    )
+ 
+ 
+ 
+@dp.message(F.text == "🧹 Очистить кэш")
+ 
+async def clear_cache(message: types.Message):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    save_json(CACHE_FILE, [])
+ 
+ 
+    await message.answer(
+ 
+        "✅ Кэш очищен",
+ 
+        reply_markup=settings_kb()
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# BAN LIST
+ 
+# =========================
+ 
+@dp.message(F.text == "🚫 Бан-лист")
+ 
+async def banlist_handler(message: types.Message):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    bans = load_json(BANS_FILE, [])
+ 
+ 
+    text = "🚫 <b>Бан-лист:</b>\n\n"
+ 
+ 
+    if not bans:
+ 
+        text += "Пусто"
+ 
+    else:
+ 
+        for i, uid in enumerate(bans, 1):
+ 
+            text += f"{i}. {uid}\n"
+ 
+ 
+    await message.answer(
+ 
+        text,
+ 
+        reply_markup=ban_kb()
+ 
+    )
+ 
+ 
+ 
+@dp.message(F.text == "➕ Забанить ID")
+ 
+async def ban_id_start(message: types.Message, state: FSMContext):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await state.set_state(UserStates.waiting_ban_id)
+ 
+ 
+    await message.answer(
+ 
+        "Введите ID для бана:",
+ 
+        reply_markup=cancel_kb
+ 
+    )
+ 
+ 
+ 
+@dp.message(UserStates.waiting_ban_id)
+ 
+async def save_ban(message: types.Message, state: FSMContext):
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await message.answer("Отмена.", reply_markup=ban_kb())
+ 
+        return
+ 
+ 
+    try:
+ 
+        uid = int(message.text)
+ 
+        ban_user(uid)
+ 
+        add_log(message.from_user.id, f"забанил {uid}")
+ 
+ 
+        await state.clear()
+ 
+ 
+        await message.answer(
+ 
+            "✅ Пользователь забанен",
+ 
+            reply_markup=ban_kb()
+ 
+        )
+ 
+    except:
+ 
+        await message.answer("Введите ID числом.")
+ 
+ 
+ 
+@dp.message(F.text == "🔓 Разбанить")
+ 
+async def unban_start(message: types.Message, state: FSMContext):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await state.set_state(UserStates.waiting_unban_id)
+ 
+ 
+    await message.answer(
+ 
+        "Введите ID для разбана:",
+ 
+        reply_markup=cancel_kb
+ 
+    )
+ 
+ 
+ 
+@dp.message(UserStates.waiting_unban_id)
+ 
+async def save_unban(message: types.Message, state: FSMContext):
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await message.answer("Отмена.", reply_markup=ban_kb())
+ 
+        return
+ 
+ 
+    try:
+ 
+        uid = int(message.text)
+ 
+ 
+        bans = load_json(BANS_FILE, [])
+ 
+ 
+        if uid in bans:
+ 
+            bans.remove(uid)
+ 
+            save_json(BANS_FILE, bans)
+ 
+ 
+        await state.clear()
+ 
+ 
+        await message.answer(
+ 
+            "✅ Разбан выполнен",
+ 
+            reply_markup=ban_kb()
+ 
+        )
+ 
+ 
+    except:
+ 
+        await message.answer("Введите ID числом.")
+ 
+ 
+ 
+# =========================
+ 
+# SPONSOR LINK MENU
+ 
+# =========================
+ 
+@dp.message(F.text == "🔗 Ссылка спонсора")
+ 
+async def sponsor_menu(message: types.Message):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    settings = get_settings()
+ 
+    link = settings.get("sponsor_link")
+ 
+ 
+    text = "🔗 <b>Ссылка спонсора</b>\n\n"
+ 
+ 
+    if link:
+ 
+        text += f"Текущая ссылка:\n{link}"
+ 
+    else:
+ 
+        text += "Ссылка отключена"
+ 
+ 
+    await message.answer(
+ 
+        text,
+ 
+        reply_markup=sponsor_kb()
+ 
+    )
+ 
+ 
+ 
+@dp.message(F.text == "✏️ Изменить ссылку")
+ 
+async def sponsor_change_start(message: types.Message, state: FSMContext):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await state.set_state(UserStates.waiting_sponsor_link)
+ 
+ 
+    await message.answer(
+ 
+        "Вставьте новую ссылку:",
+ 
+        reply_markup=cancel_kb
+ 
+    )
+ 
+ 
+ 
+@dp.message(UserStates.waiting_sponsor_link)
+ 
+async def sponsor_save(message: types.Message, state: FSMContext):
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await sponsor_menu(message)
+ 
+        return
+ 
+ 
+    settings = get_settings()
+ 
+    settings["sponsor_link"] = message.text
+ 
+    save_settings(settings)
+ 
+ 
+    await state.clear()
+ 
+ 
+    await message.answer(
+ 
+        "Ссылка принята ✅",
+ 
+        reply_markup=sponsor_kb()
+ 
+    )
+ 
+ 
+ 
+@dp.message(F.text == "🗑 Удалить ссылку")
+ 
+async def sponsor_delete(message: types.Message):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    settings = get_settings()
+ 
+    settings["sponsor_link"] = ""
+ 
+    save_settings(settings)
+ 
+ 
+    await message.answer(
+ 
+        "Ссылка удалена ✅",
+ 
+        reply_markup=sponsor_kb()
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# RESERVE PROXY
+ 
+# =========================
+ 
+@dp.message(F.text == "➕ Добавить свой прокси")
+ 
+async def reserve_proxy_start(message: types.Message, state: FSMContext):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await state.set_state(UserStates.waiting_proxy)
+ 
+ 
+    await message.answer(
+ 
+        "Вставьте MTProto-ссылку:",
+ 
+        reply_markup=cancel_kb
+ 
+    )
+ 
+ 
+ 
+@dp.message(UserStates.waiting_proxy)
+ 
+async def reserve_proxy_save(message: types.Message, state: FSMContext):
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await message.answer(
+ 
+            "Отмена.",
+ 
+            reply_markup=admin_main_kb()
+ 
+        )
+ 
+        return
+ 
+ 
+    if "tg://proxy?" not in message.text:
+ 
+        await message.answer("Неверная ссылка.")
+ 
+        return
+ 
+ 
+    reserve = load_json(RESERVE_FILE, [])
+ 
+ 
+    reserve.insert(0, message.text)
+ 
+    reserve = reserve[:5]
+ 
+ 
+    save_json(RESERVE_FILE, reserve)
+ 
+ 
+    await state.clear()
+ 
+ 
+    await message.answer(
+ 
+        "✅ Адрес загружен",
+ 
+        reply_markup=admin_main_kb()
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# CHECK NOW
+ 
+# =========================
+ 
+@dp.message(F.text == "🔄 Проверить сейчас")
+ 
+async def admin_check_now(message: types.Message):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await message.answer("🔍 Начинаю проверку...")
+ 
+ 
+    await send_proxies(message.chat.id)
+ 
+ 
+ 
+# =========================
+ 
+# USERS
+ 
+# =========================
+ 
+@dp.message(F.text == "👥 Пользователи")
+ 
+async def users_handler(message: types.Message):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    users = load_json(USERS_FILE, [])
+ 
+ 
+    text = "👥 <b>Пользователи:</b>\n\n"
+ 
+ 
+    if not users:
+ 
+        text += "Нет пользователей"
+ 
+    else:
+ 
+        for uid in users[-20:]:
+ 
+            text += f"{uid}\n"
+ 
+ 
+    await message.answer(
+ 
+        text,
+ 
+        reply_markup=admin_main_kb()
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# BROADCAST
+ 
+# =========================
+ 
+@dp.message(F.text == "📢 Рассылка")
+ 
+async def broadcast_start(message: types.Message, state: FSMContext):
+ 
+    if not is_admin(message.from_user.id):
+ 
+        return
+ 
+ 
+    await state.set_state(UserStates.waiting_broadcast)
+ 
+ 
+    await message.answer(
+ 
+        "Введите текст рассылки:",
+ 
+        reply_markup=cancel_kb
+ 
+    )
+ 
+ 
+ 
+@dp.message(UserStates.waiting_broadcast)
+ 
+async def broadcast_send(message: types.Message, state: FSMContext):
+ 
+    if message.text == "❌ Отмена":
+ 
+        await state.clear()
+ 
+        await message.answer(
+ 
+            "Отмена.",
+ 
+            reply_markup=admin_main_kb()
+ 
+        )
+ 
+        return
+ 
+ 
+    users = load_json(USERS_FILE, [])
+ 
+ 
+    sent = 0
+ 
+ 
+    for uid in users:
+ 
+        try:
+ 
+            await bot.send_message(uid, message.text)
+ 
+            sent += 1
+ 
+        except:
+ 
+            pass
+ 
+ 
+    await state.clear()
+ 
+ 
+    await message.answer(
+ 
+        f"✅ Рассылка завершена.\nОтправлено: {sent}",
+ 
+        reply_markup=admin_main_kb()
+ 
+    )
+ 
+ 
+ 
+# =========================
+ 
+# GLOBAL BACK IN ADMIN
+ 
+# =========================
+ 
+@dp.message(F.text == "↩️ Назад")
+ 
+async def universal_back(message: types.Message, state: FSMContext):
+ 
+    await state.clear()
+ 
+ 
+    if is_admin(message.from_user.id):
+ 
+        await message.answer(
+ 
+            "🔐 Админ-панель",
+ 
+            reply_markup=admin_main_kb()
+ 
+        )
+ 
+    else:
+ 
+        await message.answer(
+ 
+            "Главное меню",
+ 
+            reply_markup=start_kb
+ 
+        )
 
 
 # =========================
