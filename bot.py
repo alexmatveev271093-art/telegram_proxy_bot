@@ -60,6 +60,13 @@ dp = Dispatcher(storage=MemoryStorage())
 # =========================
 class UserStates(StatesGroup):
     waiting_admin_pin = State()
+    waiting_sponsor_link = State()
+    waiting_proxy = State()
+    waiting_broadcast = State()   
+    waiting_ban_id = State()
+    waiting_unban_id = State()
+    waiting_new_pin = State()
+    waiting_new_ping = State()
 
 
 # =========================
