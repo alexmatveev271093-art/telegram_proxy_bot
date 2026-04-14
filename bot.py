@@ -53,6 +53,7 @@ CHECK_LIMIT = 50
 
 # АНТИСПАМ
 ANTI_SPAM_SECONDS = 30
+USER_TIMER_TASKS = {}
 
 # =========================
 # ЛОГИ
@@ -73,6 +74,16 @@ bot = Bot(
 )
 
 dp = Dispatcher(storage=MemoryStorage())
+@dp.message()
+async def delete_user_messages(message: types.Message):
+    # НЕ трогаем команды
+    if message.text and message.text.startswith("/"):
+        return
+
+    try:
+        await message.delete()
+    except:
+        pass
 
 
 # =========================
@@ -505,37 +516,52 @@ async def proxy_handler(message: types.Message):
         await safe_send(user_id, "⛔ Вы заблокированы")
         return
 
-    # антиспам
-    if not check_antispam(user_id):
-        await safe_send(
-            user_id,
-            "⏳ Подожди немного перед следующим запросом",
-            reply_markup=proxy_kb()
-        )
-        return
-
     settings = get_settings()
 
-    # проверка подписки
-    if settings.get("sponsor_link"):
-        if not await is_subscribed(user_id):
-            await safe_send(
-                user_id,
-                "❌ Сначала подпишись на канал 👇\n\n"
-                f"{settings['sponsor_link']}",
-                reply_markup=check_sub_kb()
-            )
+    now = time.time()
+    last = USER_LAST_REQUEST.get(user_id, 0)
+    remaining = ANTI_SPAM_SECONDS - (now - last)
+
+    # ⛔ если спамит
+    if remaining > 0:
+        # уже есть таймер — не создаём новый
+        if user_id in USER_TIMER_TASKS:
             return
+
+        await safe_send(
+            user_id,
+            f"⏳ Подожди немного перед следующим запросом ({int(remaining)} сек)",
+            reply_markup=None
+        )
+
+        # создаём таймер
+        async def delayed_send():
+            await asyncio.sleep(remaining)
+
+            USER_LAST_REQUEST[user_id] = time.time()
+
+            await send_proxies(user_id)
+
+            USER_TIMER_TASKS.pop(user_id, None)
+
+        task = asyncio.create_task(delayed_send())
+        USER_TIMER_TASKS[user_id] = task
+
+        return
+
+    # ✅ первый нормальный запрос
+    USER_LAST_REQUEST[user_id] = now
 
     add_log(user_id, "запросил прокси")
 
-    # добавляем в очередь
-    await QUEUE.put(user_id)
-
     await safe_send(
         user_id,
-        "⏳ Ты добавлен в очередь...\nПодожди немного"
+        "⏳ Ищу прокси...",
+        reply_markup=None
     )
+
+    await send_proxies(user_id)
+
 
 
 # =========================
@@ -1017,18 +1043,6 @@ async def save_proxy(message: types.Message, state: FSMContext):
         "✅ Прокси добавлен в резерв",
         reply_markup=admin_main_kb()
     )
-
-
-@dp.message()
-async def delete_user_messages(message: types.Message):
-    # НЕ трогаем команды
-    if message.text and message.text.startswith("/"):
-        return
-
-    try:
-        await message.delete()
-    except:
-        pass
 
 
 # =========================
