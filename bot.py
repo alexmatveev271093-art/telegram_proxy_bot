@@ -73,12 +73,6 @@ bot = Bot(
 )
 
 dp = Dispatcher(storage=MemoryStorage())
-@dp.message()
-async def delete_user_messages(message: types.Message):
-    try:
-        await message.delete()
-    except:
-        pass
 
 
 # =========================
@@ -1023,6 +1017,18 @@ async def save_proxy(message: types.Message, state: FSMContext):
         "✅ Прокси добавлен в резерв",
         reply_markup=admin_main_kb()
     )
+
+
+@dp.message()
+async def delete_user_messages(message: types.Message):
+    # НЕ трогаем команды
+    if message.text and message.text.startswith("/"):
+        return
+
+    try:
+        await message.delete()
+    except:
+        pass
 
 
 # =========================
