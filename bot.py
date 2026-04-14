@@ -73,6 +73,13 @@ bot = Bot(
 )
 
 dp = Dispatcher(storage=MemoryStorage())
+@dp.message()
+async def delete_user_messages(message: types.Message):
+    try:
+        await message.delete()
+    except:
+        pass
+
 
 # =========================
 # FSM
@@ -538,41 +545,6 @@ async def proxy_handler(message: types.Message):
 
 
 # =========================
-# CANCEL
-# =========================
-@dp.message(F.text == "❌ Отмена")
-async def cancel_handler(message: types.Message, state: FSMContext):
-    await state.clear()
-
-    await safe_send(
-        message.from_user.id,
-        "Действие отменено",
-        reply_markup=start_kb()
-    )
-
-
-# =========================
-# BACK
-# =========================
-@dp.message(F.text == "↩️ Назад")
-async def back_handler(message: types.Message, state: FSMContext):
-    await state.clear()
-
-    if is_admin(message.from_user.id):
-        await safe_send(
-            message.from_user.id,
-            "🔐 Админ-панель",
-            reply_markup=admin_main_kb()
-        )
-    else:
-        await safe_send(
-            message.from_user.id,
-            "Главное меню",
-            reply_markup=start_kb()
-        )
-
-
-# =========================
 # ADMIN SESSIONS
 # =========================
 admin_sessions = {}
@@ -911,6 +883,146 @@ async def cancel_handler(message: types.Message, state: FSMContext):
         await safe_send(message.chat.id, "Отмена", reply_markup=admin_main_kb())
     else:
         await safe_send(message.chat.id, "Отмена", reply_markup=start_kb())
+
+
+# =========================
+# ADMIN: НАСТРОЙКИ
+# =========================
+@dp.message(F.text == "⚙️ Настройки")
+async def open_settings(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    await safe_send(
+        message.chat.id,
+        "⚙️ Настройки",
+        reply_markup=settings_kb()
+    )
+
+
+# =========================
+# ADMIN: СПОНСОР
+# =========================
+@dp.message(F.text == "🔗 Ссылка спонсора")
+async def sponsor_menu(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    settings = get_settings()
+    link = settings.get("sponsor_link") or "❌ Не задана"
+
+    await safe_send(
+        message.chat.id,
+        f"🔗 Текущая ссылка:\n{link}",
+        reply_markup=sponsor_kb()
+    )
+
+
+@dp.message(F.text == "✏️ Изменить ссылку")
+async def change_sponsor_start(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.set_state(UserStates.waiting_sponsor_link)
+
+    await safe_send(
+        message.chat.id,
+        "Вставь новую ссылку:",
+        reply_markup=cancel_kb()
+    )
+
+
+@dp.message(UserStates.waiting_sponsor_link)
+async def save_sponsor_link(message: types.Message, state: FSMContext):
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await safe_send(message.chat.id, "Отмена", reply_markup=sponsor_kb())
+        return
+
+    settings = get_settings()
+    settings["sponsor_link"] = message.text
+    save_settings(settings)
+
+    await state.clear()
+
+    await safe_send(
+        message.chat.id,
+        "✅ Ссылка обновлена",
+        reply_markup=sponsor_kb()
+    )
+
+
+@dp.message(F.text == "🗑 Удалить ссылку")
+async def delete_sponsor(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    settings = get_settings()
+    settings["sponsor_link"] = ""
+    save_settings(settings)
+
+    await safe_send(
+        message.chat.id,
+        "✅ Ссылка удалена",
+        reply_markup=sponsor_kb()
+    )
+
+
+# =========================
+# ADMIN: ПРОВЕРИТЬ ПРОКСИ
+# =========================
+@dp.message(F.text == "🔄 Проверить сейчас")
+async def check_now(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    await safe_send(message.chat.id, "🔍 Проверяю прокси...")
+
+    proxies = await find_best_proxies()
+
+    await safe_send(
+        message.chat.id,
+        f"✅ Найдено: {len(proxies)} прокси",
+        reply_markup=admin_main_kb()
+    )
+
+
+# =========================
+# ADMIN: ДОБАВИТЬ ПРОКСИ
+# =========================
+@dp.message(F.text == "➕ Добавить прокси")
+async def add_proxy_start(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.set_state(UserStates.waiting_proxy)
+
+    await safe_send(
+        message.chat.id,
+        "Вставь ссылку прокси (tg://proxy?...):",
+        reply_markup=cancel_kb()
+    )
+
+
+@dp.message(UserStates.waiting_proxy)
+async def save_proxy(message: types.Message, state: FSMContext):
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await safe_send(message.chat.id, "Отмена", reply_markup=admin_main_kb())
+        return
+
+    reserve = load_json(RESERVE_FILE, [])
+    reserve.insert(0, message.text)
+
+    save_json(RESERVE_FILE, reserve[:20])
+
+    await state.clear()
+
+    await safe_send(
+        message.chat.id,
+        "✅ Прокси добавлен в резерв",
+        reply_markup=admin_main_kb()
+    )
 
 
 # =========================
