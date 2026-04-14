@@ -74,16 +74,6 @@ bot = Bot(
 )
 
 dp = Dispatcher(storage=MemoryStorage())
-@dp.message()
-async def delete_user_messages(message: types.Message):
-    # НЕ трогаем команды
-    if message.text and message.text.startswith("/"):
-        return
-
-    try:
-        await message.delete()
-    except:
-        pass
 
 
 # =========================
@@ -447,7 +437,12 @@ async def is_subscribed(user_id):
 # =========================
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    user_id = message.from_user.id
+try:
+        await message.delete()
+    except:
+        pass
+    
+user_id = message.from_user.id
 
     if is_banned(user_id):
         await safe_send(user_id, "⛔ Вы заблокированы")
@@ -488,6 +483,11 @@ async def start_handler(message: types.Message):
 # =========================
 @dp.message(F.text == "Проверить подписку ✅")
 async def check_sub_handler(message: types.Message):
+     try:
+        await message.delete()
+    except:
+        pass
+
     user_id = message.from_user.id
 
     if await is_subscribed(user_id):
@@ -510,6 +510,11 @@ async def check_sub_handler(message: types.Message):
 # =========================
 @dp.message(F.text == "Дай прокси 🔥")
 async def proxy_handler(message: types.Message):
+     try:
+        await message.delete()
+    except:
+        pass
+    
     user_id = message.from_user.id
 
     if is_banned(user_id):
@@ -627,6 +632,11 @@ def ban_kb():
 # =========================
 @dp.message(Command("admin"))
 async def admin_command(message: types.Message, state: FSMContext):
+     try:
+        await message.delete()
+    except:
+        pass
+
     if is_banned(message.from_user.id):
         return
 
@@ -879,7 +889,12 @@ async def broadcast_send(message: types.Message, state: FSMContext):
 
 @dp.message(F.text == "↩️ Назад")
 async def universal_back(message: types.Message, state: FSMContext):
-    await state.clear()
+    try:
+        await message.delete()
+    except:
+        pass
+    
+      await state.clear()
 
     if is_admin(message.from_user.id):
         await safe_send(
@@ -897,6 +912,11 @@ async def universal_back(message: types.Message, state: FSMContext):
 
 @dp.message(F.text == "❌ Отмена")
 async def cancel_handler(message: types.Message, state: FSMContext):
+    try:
+        await message.delete()
+    except:
+        pass
+
     await state.clear()
 
     if is_admin(message.from_user.id):
