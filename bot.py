@@ -437,7 +437,7 @@ async def is_subscribed(user_id):
 # =========================
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-try:
+    try:
         await message.delete()
     except:
         pass
@@ -483,7 +483,7 @@ user_id = message.from_user.id
 # =========================
 @dp.message(F.text == "Проверить подписку ✅")
 async def check_sub_handler(message: types.Message):
-     try:
+    try:
         await message.delete()
     except:
         pass
@@ -510,7 +510,7 @@ async def check_sub_handler(message: types.Message):
 # =========================
 @dp.message(F.text == "Дай прокси 🔥")
 async def proxy_handler(message: types.Message):
-     try:
+    try:
         await message.delete()
     except:
         pass
@@ -632,7 +632,7 @@ def ban_kb():
 # =========================
 @dp.message(Command("admin"))
 async def admin_command(message: types.Message, state: FSMContext):
-     try:
+    try:
         await message.delete()
     except:
         pass
@@ -894,7 +894,7 @@ async def universal_back(message: types.Message, state: FSMContext):
     except:
         pass
     
-      await state.clear()
+    await state.clear()
 
     if is_admin(message.from_user.id):
         await safe_send(
