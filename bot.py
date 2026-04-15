@@ -34,6 +34,7 @@ USERS_FILE = "users.json"
 LOGS_FILE = "logs.json"
 BANS_FILE = "bans.json"
 DEAD_PROXIES_FILE = "dead_proxies.json"
+BACKUP_PROXIES_FILE = "backup_proxies.json"  # Резервные прокси
 
 # =========================
 # ДЕФОЛТ
@@ -418,6 +419,14 @@ async def check_proxy(proxy):
 # =========================
 # BEST PROXIES
 # =========================
+def save_backup_proxies(proxies):
+    """Сохранить резервные прокси"""
+    save_json(BACKUP_PROXIES_FILE, proxies)
+
+def load_backup_proxies():
+    """Лоадить резервные прокси"""
+    return load_json(BACKUP_PROXIES_FILE, [])
+
 async def find_best_proxies():
     """
     Найти лучшие прокси с кэшированием результатов (TTL).
@@ -474,6 +483,9 @@ async def find_best_proxies():
         for item in working:
             dead.pop(get_proxy_key(item["proxy"]), None)
         save_dead_proxies(dead)
+        
+        # Сохраняем как резервные для будущих использований
+        save_backup_proxies(working)
 
     save_json(CACHE_FILE, working)
     
@@ -631,11 +643,17 @@ async def send_proxies(chat_id):
         # Получаем результат поиска
         proxies = await search_task
 
+        # Если не найдены свежие прокси - берем резервные
+        if not proxies:
+            proxies = load_backup_proxies()
+            if proxies:
+                logger.info(f"Свежих прокси не найдено, показываем резервные ({len(proxies)})")
+
         # Формируем финальное сообщение
         if proxies:
             text = build_post(proxies)
         else:
-            # Если вообще нет прокси - отправляем простое сообщение
+            # Если вообще нет ни свежих ни резервных прокси
             text = (
                 "⚠️ К сожалению, на данный момент нет доступных прокси.\n"
                 "Бот постоянно проверяет источники 🔄\n\n"
@@ -1403,6 +1421,9 @@ async def save_proxy(message: types.Message, state: FSMContext):
             proxies_list.sort(key=lambda x: x["ping"])
             proxies_list = proxies_list[:20]  # Ограничиваем до 20
             save_json(CACHE_FILE, proxies_list)
+            
+            # Сохраняем как резервные прокси для будущего использования
+            save_backup_proxies(proxies_list)
             
             added_count += 1
             logger.info(f"[{idx}] ✅ Добавлен: {proxy_key}")
