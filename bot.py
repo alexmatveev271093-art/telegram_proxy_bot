@@ -57,8 +57,8 @@ CHECK_LIMIT = 50
 # ОПТИМИЗАЦИЯ: Параллельная проверка и кэширование
 MAX_CONCURRENT_CHECKS = 8  # Максимум одновременных проверок
 PROXY_CACHE_TTL = 1800  # Кэш на 30 минут в секундах
-PROXY_CHECK_TIMEOUT = 1.5  # Таймаут подключения
-PROXY_READ_TIMEOUT = 1.5  # Таймаут чтения
+PROXY_CHECK_TIMEOUT = 3.0  # Таймаут подключения (увеличен для надежности)
+PROXY_READ_TIMEOUT = 3.0  # Таймаут чтения (увеличен для надежности)
 
 # Глобальный Semaphore для ограничения одновременных проверок
 check_semaphore = asyncio.Semaphore(MAX_CONCURRENT_CHECKS)
@@ -376,12 +376,12 @@ async def check_proxy(proxy):
                 mark_proxy_dead(proxy_key)
                 return None
         
-        except (OSError, ConnectionRefusedError, asyncio.TimeoutError):
+        except (OSError, ConnectionRefusedError, asyncio.TimeoutError, ConnectionResetError):
             mark_proxy_dead(proxy_key)
             return None
         
         except Exception as e:
-            logger.warning(f"Ошибка проверки прокси {proxy_key}: {e}")
+            logger.debug(f"Ошибка проверки прокси {proxy_key}: {e}")
             mark_proxy_dead(proxy_key)
             return None
 
@@ -1345,6 +1345,7 @@ async def save_proxy(message: types.Message, state: FSMContext):
             
             if not all(k in params for k in ["server", "port", "secret"]):
                 failed_count += 1
+                logger.warning(f"Неправильный формат ссылки: {link}")
                 continue
             
             proxy = {
@@ -1353,31 +1354,38 @@ async def save_proxy(message: types.Message, state: FSMContext):
                 "secret": params["secret"][0]
             }
             
+            proxy_key = get_proxy_key(proxy)
+            logger.info(f"Проверяю прокси: {proxy_key}")
+            
             # Проверяем прокси (вернет None если мертвый)
             result = await check_proxy(proxy)
             
             if result is None:
                 failed_count += 1
+                logger.warning(f"Прокси {proxy_key} не ответил или помечен как мертвый")
             elif result["ping"] > max_add_ping:
                 # Пинг слишком большой
                 bad_pings.append(result["ping"])
                 failed_count += 1
+                logger.warning(f"Прокси {proxy_key} имеет пинг {result['ping']}мс (лимит {max_add_ping}мс)")
             else:
                 # Прокси живой и хороший пинг - добавляем в ОСНОВНОЙ список
                 proxies_list = load_json(CACHE_FILE, [])
                 
                 # Проверяем не добавлен ли уже
-                proxy_key = get_proxy_key(proxy)
                 if not any(get_proxy_key(p["proxy"]) == proxy_key for p in proxies_list):
                     proxies_list.append(result)
                     proxies_list.sort(key=lambda x: x["ping"])
                     proxies_list = proxies_list[:20]  # Ограничиваем до 20
                     save_json(CACHE_FILE, proxies_list)
                     added_count += 1
+                    logger.info(f"✅ Добавлен прокси {proxy_key} с пингом {result['ping']}мс")
+                else:
+                    logger.info(f"Прокси {proxy_key} уже в списке")
         
         except Exception as e:
             failed_count += 1
-            logger.warning(f"Ошибка парсинга прокси '{link}': {e}")
+            logger.error(f"Ошибка парсинга прокси '{link}': {e}")
     
     # Формируем ответ
     response_text = f"✅ Результат:\n\n"
@@ -1385,7 +1393,9 @@ async def save_proxy(message: types.Message, state: FSMContext):
     response_text += f"❌ Не прошли проверку: {failed_count}\n"
     
     if bad_pings:
-        response_text += f"⚠️ Пинг > 450мс: {len(bad_pings)}\n"
+        response_text += f"⚠️ Пинг > {max_add_ping}мс: {len(bad_pings)}\n"
+    
+    response_text += f"\n<code>Логи в боте (боковое меню)</code>"
     
     await state.clear()
     await safe_send(message.chat.id, response_text, reply_markup=admin_main_kb())
