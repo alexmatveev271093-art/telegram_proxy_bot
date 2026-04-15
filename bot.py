@@ -506,7 +506,13 @@ def build_mtproto_link(proxy):
 # BUILD POST
 # =========================
 def build_post(proxies):
-    reserve = load_json(RESERVE_FILE, [])
+    """
+    Строит сообщение с прокси.
+    Выводит максимум 5 лучших прокси по пингу.
+    Резерв удален - все идет в основной список.
+    """
+    # Ограничиваем 5 лучшими
+    top_proxies = proxies[:5]
 
     text = (
         '<a href="https://t.me/+T8J7eXlfvfc5NWNi">🔥 <b>Good Place AI</b> 🤖</a>\n\n'
@@ -515,14 +521,12 @@ def build_post(proxies):
         '▶️ <a href="https://www.youtube.com/@gd_place">YouTube</a>\n\n'
         "━━━━━━━━━━━━━━━\n\n"
         "🚀 <b>СВЕЖИЕ прокси для Telegram 👇</b>\n\n"
-        "💡 ЖМИ и подключай — работает сразу\n"
         "(если не зашёл 🤔 — попробуй следующий 😉 — разлетаются как пирожки 🔥)\n\n"
         "━━━━━━━━━━━━━━━\n\n"
-        "🔥 <b>ТОП (самые стабильные):</b>\n\n"
     )
 
-    # основные прокси с пингом
-    for i, item in enumerate(proxies, start=1):
+    # Основные прокси с пингом (максимум 5)
+    for i, item in enumerate(top_proxies, start=1):
         link = build_mtproto_link(item["proxy"])
         ping = item["ping"]
         
@@ -539,19 +543,9 @@ def build_post(proxies):
             f'<a href="{link}">Подключить прокси 👈</a>\n\n'
         )
 
-    # резерв
-    if reserve:
-        text += "━━━━━━━━━━━━━━━\n\n📌 <b>НАШ РЕЗЕРВ 👇</b>\n\n"
-
-        for i, link in enumerate(reserve[:5], start=1):
-            text += (
-                f"{i}️⃣ "
-                f'<a href="{link}">Резервный прокси ⚡️</a>\n\n'
-            )
-
     text += (
         "━━━━━━━━━━━━━━━\n\n"
-        "✅ <b>Поделись с друзьями ботом — пригодится 😉</b>"
+        "✅ <b>Поделись с другом 😉</b>"
     )
 
     return text
@@ -569,19 +563,22 @@ async def send_proxies(chat_id):
 
         proxies = await find_best_proxies()
 
-        if not proxies:
-            await safe_send(
-                chat_id,
-                "❌ Не удалось найти рабочие прокси 😢\nПопробуй позже"
+        # Всегда отправляем прокси, даже если список небольшой
+        # Они отсортированы от лучших к худшим
+        if proxies:
+            text = build_post(proxies)
+        else:
+            # Если вообще нет прокси - отправляем простое сообщение
+            text = (
+                "⚠️ К сожалению, на данный момент нет доступных прокси.\n"
+                "Бот постоянно проверяет источники 🔄\n\n"
+                "Попробуй позже или добавь свои через админ-панель."
             )
-            return
-
-        text = build_post(proxies)
 
         await safe_send(
             chat_id,
             text,
-            reply_markup=proxy_kb()
+            reply_markup=proxy_kb() if proxies else start_kb()
         )
 
     except Exception as e:
@@ -1260,30 +1257,94 @@ async def add_proxy_start(message: types.Message, state: FSMContext):
 
     await safe_send(
         message.chat.id,
-        "Вставь ссылку прокси (tg://proxy?...):",
+        "Вставь ссылку прокси (tg://proxy?...)\n\n"
+        "Можешь отправить несколько — по одной в строке\n"
+        "Бот проверит каждый (пинг макс 450мс) и добавит рабочие 🚀",
         reply_markup=cancel_kb()
     )
 
 
 @dp.message(UserStates.waiting_proxy)
 async def save_proxy(message: types.Message, state: FSMContext):
+    """
+    Обработка добавления одного или нескольких прокси.
+    Поддерживает:
+    - Одну ссылку: tg://proxy?server=...&port=...&secret=...
+    - Несколько ссылок через перевод строки
+    - Парсит и проверяет каждый прокси (пинг <= 450мс)
+    """
     if message.text == "❌ Отмена":
         await state.clear()
         await safe_send(message.chat.id, "Отмена", reply_markup=admin_main_kb())
         return
 
-    reserve = load_json(RESERVE_FILE, [])
-    reserve.insert(0, message.text)
-
-    save_json(RESERVE_FILE, reserve[:20])
-
-    await state.clear()
-
     await safe_send(
         message.chat.id,
-        "✅ Прокси добавлен в резерв",
-        reply_markup=admin_main_kb()
+        "🔍 Проверяю прокси... это может занять минуту"
     )
+
+    # Парсим текст - может быть несколько прокси
+    lines = message.text.strip().split('\n')
+    proxy_links = [line.strip() for line in lines if line.strip()]
+    
+    added_count = 0
+    failed_count = 0
+    bad_pings = []
+    
+    # Проверяем каждый прокси
+    for link in proxy_links:
+        try:
+            # Парсим ссылку
+            parsed = urlparse(link)
+            params = parse_qs(parsed.query)
+            
+            if not all(k in params for k in ["server", "port", "secret"]):
+                failed_count += 1
+                continue
+            
+            proxy = {
+                "server": params["server"][0],
+                "port": int(params["port"][0]),
+                "secret": params["secret"][0]
+            }
+            
+            # Проверяем прокси (вернет None если мертвый)
+            result = await check_proxy(proxy)
+            
+            if result is None:
+                failed_count += 1
+            elif result["ping"] > 450:
+                # Пинг слишком большой
+                bad_pings.append(result["ping"])
+                failed_count += 1
+            else:
+                # Прокси живой и хороший пинг - добавляем в ОСНОВНОЙ список
+                proxies_list = load_json(CACHE_FILE, [])
+                
+                # Проверяем не добавлен ли уже
+                proxy_key = get_proxy_key(proxy)
+                if not any(get_proxy_key(p["proxy"]) == proxy_key for p in proxies_list):
+                    proxies_list.append(result)
+                    proxies_list.sort(key=lambda x: x["ping"])
+                    proxies_list = proxies_list[:20]  # Ограничиваем до 20
+                    save_json(CACHE_FILE, proxies_list)
+                    added_count += 1
+        
+        except Exception as e:
+            failed_count += 1
+            logger.warning(f"Ошибка парсинга прокси '{link}': {e}")
+    
+    # Формируем ответ
+    response_text = f"✅ Результат:\n\n"
+    response_text += f"✔️ Добавлено: {added_count}\n"
+    response_text += f"❌ Не прошли проверку: {failed_count}\n"
+    
+    if bad_pings:
+        response_text += f"⚠️ Пинг > 450мс: {len(bad_pings)}\n"
+    
+    await state.clear()
+    await safe_send(message.chat.id, response_text, reply_markup=admin_main_kb())
+
 
 
 # =========================
