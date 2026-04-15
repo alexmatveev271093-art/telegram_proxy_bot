@@ -1311,16 +1311,13 @@ async def add_proxy_start(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
 
-    settings = get_settings()
-    max_ping = settings.get("max_proxy_add_ping", 450)
-
     await state.set_state(UserStates.waiting_proxy)
 
     await safe_send(
         message.chat.id,
         "Вставь ссылку прокси (tg://proxy?...)\n\n"
         "Можешь отправить несколько — по одной в строке\n"
-        f"Бот проверит каждый (пинг макс {max_ping}мс) и добавит рабочие 🚀",
+        "Прокси сразу добавятся пользователям 🚀",
         reply_markup=cancel_kb()
     )
 
@@ -1328,27 +1325,19 @@ async def add_proxy_start(message: types.Message, state: FSMContext):
 @dp.message(UserStates.waiting_proxy)
 async def save_proxy(message: types.Message, state: FSMContext):
     """
-    Обработка добавления одного или нескольких прокси.
-    Поддерживает:
-    - Одну ссылку: tg://proxy?server=...&port=...&secret=...
-    - Несколько ссылок через перевод строки
-    - Парсит и проверяет каждый прокси (пинг <= макс из настроек)
+    Обработка добавления прокси без проверки.
+    Админ отвечает за валидность ссылок.
     """
-    chat_id = message.chat.id
-    logger.info(f"=== НАЧАЛО ДОБАВЛЕНИЯ ПРОКСИ (чат {chat_id}) ===")
-    
     if message.text == "❌ Отмена":
         await state.clear()
         await safe_send(message.chat.id, "Отмена", reply_markup=admin_main_kb())
         return
 
-    settings = get_settings()
-    max_add_ping = settings.get("max_proxy_add_ping", 450)
-    logger.info(f"Макс пинг для добавления: {max_add_ping}мс")
+    logger.info(f"=== ДОБАВЛЕНИЕ ПРОКСИ (админ) ===")
 
     await safe_send(
         message.chat.id,
-        "🔍 Проверяю прокси... это может занять минуту"
+        "⏳ Добавляю прокси..."
     )
 
     # Парсим текст - может быть несколько прокси
@@ -1358,11 +1347,9 @@ async def save_proxy(message: types.Message, state: FSMContext):
     
     added_count = 0
     failed_count = 0
-    bad_pings = []
     
-    # Проверяем каждый прокси
+    # Добавляем каждый прокси без проверки
     for idx, link in enumerate(proxy_links, 1):
-        logger.info(f"[{idx}/{len(proxy_links)}] Парсим ссылку: {link[:50]}...")
         try:
             # Парсим ссылку
             parsed = urlparse(link)
@@ -1370,59 +1357,49 @@ async def save_proxy(message: types.Message, state: FSMContext):
             
             if not all(k in params for k in ["server", "port", "secret"]):
                 failed_count += 1
-                logger.warning(f"Неправильный формат ссылки: {link}")
+                logger.warning(f"[{idx}] Неправильный формат: {link[:60]}...")
                 continue
             
-            proxy = {
+            proxy_dict = {
                 "server": params["server"][0],
                 "port": int(params["port"][0]),
                 "secret": params["secret"][0]
             }
             
-            proxy_key = get_proxy_key(proxy)
-            logger.info(f"Проверяю прокси: {proxy_key}")
+            proxy_key = get_proxy_key(proxy_dict)
             
-            # Проверяем прокси (вернет None если мертвый)
-            result = await check_proxy(proxy)
+            # Добавляем в основной список БЕЗ проверки
+            proxies_list = load_json(CACHE_FILE, [])
             
-            if result is None:
+            # Проверяем не добавлен ли уже
+            if any(get_proxy_key(p["proxy"]) == proxy_key for p in proxies_list):
+                logger.info(f"[{idx}] {proxy_key} уже в списке")
                 failed_count += 1
-                logger.warning(f"Прокси {proxy_key} не ответил или помечен как мертвый")
-            elif result["ping"] > max_add_ping:
-                # Пинг слишком большой
-                bad_pings.append(result["ping"])
-                failed_count += 1
-                logger.warning(f"Прокси {proxy_key} имеет пинг {result['ping']}мс (лимит {max_add_ping}мс)")
-            else:
-                # Прокси живой и хороший пинг - добавляем в ОСНОВНОЙ список
-                proxies_list = load_json(CACHE_FILE, [])
-                
-                # Проверяем не добавлен ли уже
-                if not any(get_proxy_key(p["proxy"]) == proxy_key for p in proxies_list):
-                    proxies_list.append(result)
-                    proxies_list.sort(key=lambda x: x["ping"])
-                    proxies_list = proxies_list[:20]  # Ограничиваем до 20
-                    save_json(CACHE_FILE, proxies_list)
-                    added_count += 1
-                    logger.info(f"✅ Добавлен прокси {proxy_key} с пингом {result['ping']}мс")
-                else:
-                    logger.info(f"Прокси {proxy_key} уже в списке")
+                continue
+            
+            # Добавляем с пустым пингом (админ гарантирует валидность)
+            proxies_list.append({
+                "proxy": proxy_dict,
+                "ping": 0  # Админ добавил - не проверяем
+            })
+            
+            proxies_list.sort(key=lambda x: x["ping"])
+            proxies_list = proxies_list[:20]  # Ограничиваем до 20
+            save_json(CACHE_FILE, proxies_list)
+            
+            added_count += 1
+            logger.info(f"[{idx}] ✅ Добавлен: {proxy_key}")
         
         except Exception as e:
             failed_count += 1
-            logger.error(f"Ошибка парсинга прокси '{link}': {e}")
+            logger.error(f"[{idx}] Ошибка парсинга: {e}")
     
     # Формируем ответ
-    logger.info(f"=== ИТОГ: добавлено={added_count}, не прошли={failed_count}, пинг>{max_add_ping}={len(bad_pings)} ===")
+    logger.info(f"=== ИТОГ: добавлено={added_count}, ошибки={failed_count} ===")
     
     response_text = f"✅ Результат:\n\n"
     response_text += f"✔️ Добавлено: {added_count}\n"
-    response_text += f"❌ Не прошли проверку: {failed_count}\n"
-    
-    if bad_pings:
-        response_text += f"⚠️ Пинг > {max_add_ping}мс: {len(bad_pings)}\n"
-    
-    response_text += f"\n<code>Логи в файле bot.log</code>"
+    response_text += f"❌ Ошибки: {failed_count}\n"
     
     await state.clear()
     await safe_send(message.chat.id, response_text, reply_markup=admin_main_kb())
