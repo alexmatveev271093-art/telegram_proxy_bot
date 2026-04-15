@@ -625,18 +625,19 @@ async def send_proxies(chat_id):
             elapsed = int(time.time() - start_time)
 
             # Обновляем сообщение каждые 5 сек
-            if elapsed > 0 and (elapsed % 5 == 0 and elapsed != last_update):
+            if elapsed > 0 and elapsed % 5 == 0 and elapsed != last_update:
                 try:
                     # Удаляем старое сообщение
-                    await bot.delete_message(chat_id, current_msg.message_id)
+                    if current_msg:
+                        await bot.delete_message(chat_id, current_msg.message_id)
 
                     # Отправляем новое с обновленным прогресс-баром
                     progress_text = f"🔍 Ищу самые быстрые прокси...\n\n{build_progress_bar(elapsed)}"
                     current_msg = await safe_send(chat_id, progress_text)
 
                     last_update = elapsed
-                except Exception:
-                    pass  # Игнорируем ошибки при обновлении
+                except Exception as e:
+                    logger.error(f"Ошибка при обновлении прогресса для {chat_id}: {e}")
 
             # Даем задаче время на выполнение
             try:
@@ -665,6 +666,13 @@ async def send_proxies(chat_id):
                 "Бот постоянно проверяет источники 🔄\n\n"
                 "Попробуй позже"
             )
+
+        # Удаляем сообщение с прогресс-баром перед отправкой финального
+        try:
+            if current_msg:
+                await bot.delete_message(chat_id, current_msg.message_id)
+        except Exception:
+            pass
 
         # Отправляем финальное сообщение
         await safe_send(
@@ -811,10 +819,10 @@ async def proxy_handler(message: types.Message):
 
         # создаём таймер с обновлением прогресса
         async def delayed_send():
+            nonlocal current_msg
             start_time = time.time()
             total_wait = remaining
             last_update = 0
-            current_timer_msg = current_msg
 
             while True:
                 elapsed = time.time() - start_time
@@ -824,24 +832,32 @@ async def proxy_handler(message: types.Message):
                     break
 
                 # Обновляем каждые 5 сек
-                if int(remaining_now) % 5 != last_update % 5:
+                if int(remaining_now) % 5 == 0 and int(remaining_now) != last_update:
                     last_update = int(remaining_now)
                     try:
                         # Удаляем старое сообщение
-                        await bot.delete_message(user_id, current_timer_msg.message_id)
+                        if current_msg:
+                            await bot.delete_message(user_id, current_msg.message_id)
 
                         # Отправляем новое с обновленным таймером
-                        current_timer_msg = await safe_send(
+                        current_msg = await safe_send(
                             user_id,
                             f"⏳ Подожди перед следующим запросом\n\n{build_progress_bar(int(remaining_now))}",
                             reply_markup=None
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Ошибка при обновлении таймера для {user_id}: {e}")
 
                 await asyncio.sleep(1)
 
             USER_LAST_REQUEST[user_id] = time.time()
+
+            # Удаляем таймер-сообщение перед отправкой прокси
+            try:
+                if current_msg:
+                    await bot.delete_message(user_id, current_msg.message_id)
+            except Exception:
+                pass
 
             await send_proxies(user_id)
 
