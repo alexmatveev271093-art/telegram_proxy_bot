@@ -595,10 +595,10 @@ def build_post(proxies):
 # SEND PROXIES
 # =========================
 def build_progress_bar(seconds):
-    """Строит прогресс-бар с шагом в 10 сек"""
-    filled = seconds // 10
-    total = 3  # 30 сек максимум (3 шага по 10 сек)
-    
+    """Строит прогресс-бар с шагом в 5 сек"""
+    filled = seconds // 5
+    total = 6  # 30 сек максимум (6 шагов по 5 сек)
+
     bar = "█" * filled + "░" * (total - filled)
     return f"[{bar}] {seconds} сек ⏳"
 
@@ -606,37 +606,38 @@ def build_progress_bar(seconds):
 async def send_proxies(chat_id):
     try:
         # Отправляем начальное сообщение
-        initial_msg = await safe_send(
+        current_msg = await safe_send(
             chat_id,
             f"🔍 Ищу самые быстрые прокси...\n\n{build_progress_bar(0)}"
         )
-        
+
         # Запускаем поиск прокси и обновление прогресса одновременно
         start_time = time.time()
-        
+
         # Создаем таск поиска прокси
         search_task = asyncio.create_task(find_best_proxies())
-        
+
         # Флаг для отслеживания обновлений
         last_update = 0
-        
-        # Обновляем прогресс каждые 10 сек пока не будут найдены прокси
+
+        # Обновляем прогресс каждые 5 сек пока не будут найдены прокси
         while not search_task.done():
             elapsed = int(time.time() - start_time)
-            
-            # Обновляем сообщение каждые 10 сек (или при первом обновлении)
-            if elapsed > 0 and (elapsed % 10 == 0 and elapsed != last_update):
+
+            # Обновляем сообщение каждые 5 сек
+            if elapsed > 0 and (elapsed % 5 == 0 and elapsed != last_update):
                 try:
+                    # Удаляем старое сообщение
+                    await bot.delete_message(chat_id, current_msg.message_id)
+
+                    # Отправляем новое с обновленным прогресс-баром
                     progress_text = f"🔍 Ищу самые быстрые прокси...\n\n{build_progress_bar(elapsed)}"
-                    await bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=initial_msg.message_id,
-                        text=progress_text
-                    )
+                    current_msg = await safe_send(chat_id, progress_text)
+
                     last_update = elapsed
                 except Exception:
                     pass  # Игнорируем ошибки при обновлении
-            
+
             # Даем задаче время на выполнение
             try:
                 proxies = await asyncio.wait_for(search_task, timeout=1)
@@ -802,7 +803,7 @@ async def proxy_handler(message: types.Message):
             return
 
         # Отправляем начальное сообщение с прогресс-баром
-        timer_msg = await safe_send(
+        current_msg = await safe_send(
             user_id,
             f"⏳ Подожди перед следующим запросом\n\n{build_progress_bar(int(remaining))}",
             reply_markup=None
@@ -813,26 +814,31 @@ async def proxy_handler(message: types.Message):
             start_time = time.time()
             total_wait = remaining
             last_update = 0
-            
+            current_timer_msg = current_msg
+
             while True:
                 elapsed = time.time() - start_time
                 remaining_now = total_wait - elapsed
-                
+
                 if remaining_now <= 0:
                     break
-                
-                # Обновляем каждые 10 сек
-                if int(remaining_now) % 10 != last_update % 10:
+
+                # Обновляем каждые 5 сек
+                if int(remaining_now) % 5 != last_update % 5:
                     last_update = int(remaining_now)
                     try:
-                        await bot.edit_message_text(
-                            chat_id=user_id,
-                            message_id=timer_msg.message_id,
-                            text=f"⏳ Подожди перед следующим запросом\n\n{build_progress_bar(int(remaining_now))}"
+                        # Удаляем старое сообщение
+                        await bot.delete_message(user_id, current_timer_msg.message_id)
+
+                        # Отправляем новое с обновленным таймером
+                        current_timer_msg = await safe_send(
+                            user_id,
+                            f"⏳ Подожди перед следующим запросом\n\n{build_progress_bar(int(remaining_now))}",
+                            reply_markup=None
                         )
                     except Exception:
                         pass
-                
+
                 await asyncio.sleep(1)
 
             USER_LAST_REQUEST[user_id] = time.time()
