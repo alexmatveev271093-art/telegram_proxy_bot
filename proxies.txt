@@ -1,7 +1,40 @@
-# Список прокси для телеграма
+﻿# Список прокси для телеграма
 # Формат: tg://proxy?server=...&port=...&secret=...
 # Каждая ссылка на отдельной строке
 # Добавляй новые прокси сюда вручную
 
-tg://proxy?server=example.com&port=443&secret=abcdef0123456789abcdef0123456789
+tg://proxy?server=194.41.113.118&port=443&secret=ddbe3007e927acd147dde12bee8b1a7c93
+tg://proxy?server=95.163.213.96&port=443&secret=dd000102030405060708090a0b0c0d0e0f
+tg://proxy?server=83.166.255.236&port=443&secret=dd000102030405060708090a0b0c0d0e0f
+tg://proxy?server=83.166.255.87&port=443&secret=dd000102030405060708090a0b0c0d0e0f
+tg://proxy?server=141.98.6.192&port=443&secret=7ix9qzx1rb59pdRm9E7ivEp4cC5hcHBsZS5jb20
+tg://proxy?server=87.121.89.227&port=8443&secret=7roV4MUnQzo6aGuX8JJU9aB5b25zZS5vcmc
+tg://proxy?server=144.31.157.26&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=138.124.8.168&port=443&secret=7kcMsriymurfvfii977lyjticm93c2VyLnlhbmRleC5jb20
+tg://proxy?server=171.22.31.13&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=212.80.7.142&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=212.80.7.139&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=212.80.7.148&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=212.80.7.145&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=212.80.7.134&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=193.23.194.231&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=2.27.22.224&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=50.7.230.106&port=443&secret=7mX8dVOh9cqLULccAVs4ciR2ZHNpbmEucnU
+tg://proxy?server=50.7.230.106&port=443&secret=7sCrLckc112hS_i951LKgiJ2ZHNpbmEucnU
+tg://proxy?server=178.215.239.11&port=2050&secret=7hT9tYm2d_F8vpJfwMBPytF2ay5jb20
+tg://proxy?server=144.31.215.17&port=2050&secret=7tfAs1dJjYXFuel4DP5pWe52ay5ydQ
+tg://proxy?server=45.131.186.178&port=443&secret=7r4wB-knrNFH3eEr7osafJNyYWRpb3JlY29yZC5ydQ
+tg://proxy?server=45.151.182.190&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=45.151.182.148&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=185.221.196.83&port=443&secret=ee3f354f86e59e2c166c83031772d92d6379612e7275
+tg://proxy?server=de.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
+tg://proxy?server=nl.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
+tg://proxy?server=ru.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
+tg://proxy?server=connect.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
+tg://proxy?server=live.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
+tg://proxy?server=secure.nuv.su&port=443&secret=dd470cb2b8b29aeadfbdf8a2f7bee5ca3b
+tg://proxy?server=ger1.agera-connect.lol&port=443&secret=7hN4AYI19EDOPMIdaJ2ydbxnZXIxLmFnZXJhLWNvbm5lY3QubG9s
+tg://proxy?server=rkn.mtproxy.cfd&port=2048&secret=7noG3jgFmO3_nvmAX3Y0a_92ay5ydQ
+tg://proxy?server=how.telbet.lol&port=25565&secret=dd79e344818749bd7ac519130220c25d09
+tg://proxy?server=i.telbet.lol&port=25565&secret=dd79e344818749bd7ac519130220c25d09
 
