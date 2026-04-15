@@ -4,6 +4,7 @@ import time
 import asyncio
 import logging
 import aiohttp
+import struct
 
 from urllib.parse import urlparse, parse_qs
 
@@ -32,6 +33,7 @@ USERS_FILE = "users.json"
 LOGS_FILE = "logs.json"
 BANS_FILE = "bans.json"
 RESERVE_FILE = "reserve_proxies.json"
+DEAD_PROXIES_FILE = "dead_proxies.json"
 
 # =========================
 # ДЕФОЛТ
@@ -51,8 +53,26 @@ PROXY_SOURCE_URL = (
 
 CHECK_LIMIT = 50
 
-# АНТИСПАМ
-ANTI_SPAM_SECONDS = 30
+# ОПТИМИЗАЦИЯ: Параллельная проверка и кэширование
+MAX_CONCURRENT_CHECKS = 8  # Максимум одновременных проверок
+PROXY_CACHE_TTL = 1800  # Кэш на 30 минут в секундах
+PROXY_CHECK_TIMEOUT = 1.5  # Таймаут подключения
+PROXY_READ_TIMEOUT = 1.5  # Таймаут чтения
+
+# Глобальный Semaphore для ограничения одновременных проверок
+check_semaphore = asyncio.Semaphore(MAX_CONCURRENT_CHECKS)
+
+# Кэш результатов с TTL
+proxy_cache = {
+    "data": [],
+    "timestamp": 0
+}
+
+# Время последней автоматической проверки
+last_background_check = 0
+
+# АНТИСПАМ - увеличиваем лимит
+ANTI_SPAM_SECONDS = 60
 USER_TIMER_TASKS = {}
 
 # =========================
@@ -263,45 +283,147 @@ async def load_proxy_list():
 
 
 # =========================
-# CHECK PROXY
+# ФУНКЦИИ ДЛЯ РАБОТЫ С МЕРТВЫМИ ПРОКСИ
+# =========================
+def load_dead_proxies():
+    """Загрузить список мертвых прокси"""
+    return load_json(DEAD_PROXIES_FILE, {})
+
+def save_dead_proxies(dead_list):
+    """Сохранить список мертвых прокси"""
+    save_json(DEAD_PROXIES_FILE, dead_list)
+
+def mark_proxy_dead(proxy_key):
+    """Отметить прокси как мертвый"""
+    dead = load_dead_proxies()
+    dead[proxy_key] = time.time()
+    save_dead_proxies(dead)
+
+def is_proxy_dead(proxy_key):
+    """Проверить, мертвый ли прокси"""
+    dead = load_dead_proxies()
+    if proxy_key not in dead:
+        return False
+    
+    # Забываем о мертвых прокси через 24 часа
+    if time.time() - dead[proxy_key] > 86400:
+        dead.pop(proxy_key, None)
+        save_dead_proxies(dead)
+        return False
+    
+    return True
+
+def get_proxy_key(proxy):
+    """Получить уникальный ключ прокси"""
+    return f"{proxy['server']}:{proxy['port']}"
+
+
+# =========================
+# CHECK PROXY - MTProto с Semaphore
 # =========================
 async def check_proxy(proxy):
-    try:
-        start = time.perf_counter()
-
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(proxy["server"], proxy["port"]),
-            timeout=5
-        )
-
-        ping = (time.perf_counter() - start) * 1000
-
-        writer.close()
-        await writer.wait_closed()
-
-        return {
-            "proxy": proxy,
-            "ping": round(ping, 2)
-        }
-
-    except (OSError, asyncio.TimeoutError, Exception):
+    """
+    Проверить MTProto прокси через простой handshake.
+    Использует Semaphore для ограничения параллельных проверок.
+    Возвращает dict с информацией о прокси и пингом, или None если прокси мертвый
+    """
+    proxy_key = get_proxy_key(proxy)
+    
+    # Пропускаем уже известные мертвые прокси
+    if is_proxy_dead(proxy_key):
         return None
+    
+    # Ограничиваем одновременные проверки
+    async with check_semaphore:
+        try:
+            start = time.perf_counter()
+            
+            # Подключаемся к прокси-серверу с более строгим таймаутом
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(proxy["server"], proxy["port"]),
+                timeout=PROXY_CHECK_TIMEOUT
+            )
+            
+            # MTProto handshake: отправляем простой ReqPQ
+            req_pq = bytes([0xc6, 0x11, 0xa4, 0x51]) + b'\x00' * 16
+            
+            try:
+                writer.write(req_pq)
+                await asyncio.wait_for(writer.drain(), timeout=PROXY_READ_TIMEOUT)
+                
+                # Пытаемся получить ответ
+                response = await asyncio.wait_for(
+                    reader.readexactly(8),
+                    timeout=PROXY_READ_TIMEOUT
+                )
+                
+                ping = (time.perf_counter() - start) * 1000
+                
+                writer.close()
+                await writer.wait_closed()
+                
+                # Если получили ответ - прокси хороший
+                return {
+                    "proxy": proxy,
+                    "ping": round(ping, 2)
+                }
+                
+            except asyncio.TimeoutError:
+                writer.close()
+                await writer.wait_closed()
+                mark_proxy_dead(proxy_key)
+                return None
+        
+        except (OSError, ConnectionRefusedError, asyncio.TimeoutError):
+            mark_proxy_dead(proxy_key)
+            return None
+        
+        except Exception as e:
+            logger.warning(f"Ошибка проверки прокси {proxy_key}: {e}")
+            mark_proxy_dead(proxy_key)
+            return None
 
 
 # =========================
 # BEST PROXIES
 # =========================
 async def find_best_proxies():
+    """
+    Найти лучшие прокси с кэшированием результатов (TTL).
+    Не переворяет прокси если кэш еще свежий.
+    """
+    global proxy_cache, last_background_check
+    
     settings = get_settings()
-
+    current_time = time.time()
+    
+    # Проверяем кэш - если свежий, возвращаем его
+    if proxy_cache["data"] and (current_time - proxy_cache["timestamp"]) < PROXY_CACHE_TTL:
+        logger.info("Возвращаем прокси из кэша")
+        return proxy_cache["data"]
+    
+    # Кэш устарел - начинаем проверку
+    logger.info("Кэш устарел, начинаем проверку прокси...")
+    
     proxy_list = await load_proxy_list()
 
     if not proxy_list:
         return load_json(CACHE_FILE, [])
+    
+    # Фильтруем уже известные мертвые прокси
+    dead_proxies = load_dead_proxies()
+    alive_proxies = [
+        p for p in proxy_list[:CHECK_LIMIT]
+        if get_proxy_key(p) not in dead_proxies
+    ]
+    
+    if not alive_proxies:
+        return load_json(CACHE_FILE, [])
 
+    # Проверяем прокси (Semaphore ограничит одновременные)
     tasks = [
         check_proxy(proxy)
-        for proxy in proxy_list[:CHECK_LIMIT]
+        for proxy in alive_proxies
     ]
 
     results = await asyncio.gather(*tasks)
@@ -314,9 +436,58 @@ async def find_best_proxies():
     working.sort(key=lambda x: x["ping"])
     working = working[:settings["top_count"]]
 
+    # Очищаем кэш мертвых прокси если нашли живых
+    if working:
+        dead = load_dead_proxies()
+        # Удаляем найденные живые прокси из списка мертвых
+        for item in working:
+            dead.pop(get_proxy_key(item["proxy"]), None)
+        save_dead_proxies(dead)
+
     save_json(CACHE_FILE, working)
+    
+    # Обновляем в-памяти кэш
+    proxy_cache["data"] = working
+    proxy_cache["timestamp"] = current_time
 
     return working
+
+
+# =========================
+# ФОНОВАЯ ПРОВЕРКА ПРОКСИ
+# =========================
+async def background_proxy_checker():
+    """
+    Фоновая задача для периодического обновления прокси каждые 25 минут.
+    Не блокирует пользовательские запросы.
+    """
+    global last_background_check
+    
+    while True:
+        try:
+            current_time = time.time()
+            
+            # Проверяем каждые 25 минут (1500 сек)
+            if current_time - last_background_check > 1500:
+                logger.info("Запускаем фоновую проверку прокси...")
+                
+                # Сбрасываем кэш, чтобы найти_best_proxies выполнила проверку
+                proxy_cache["timestamp"] = 0
+                
+                try:
+                    await find_best_proxies()
+                    logger.info("Фоновая проверка завершена")
+                except Exception as e:
+                    logger.error(f"Ошибка фоновой проверки: {e}")
+                
+                last_background_check = current_time
+            
+            # Спим 5 минут перед siguiente проверкой
+            await asyncio.sleep(300)
+            
+        except Exception as e:
+            logger.error(f"Критическая ошибка в background_proxy_checker: {e}")
+            await asyncio.sleep(60)
 
 
 # =========================
@@ -350,12 +521,21 @@ def build_post(proxies):
         "🔥 <b>ТОП (самые стабильные):</b>\n\n"
     )
 
-    # основные прокси
+    # основные прокси с пингом
     for i, item in enumerate(proxies, start=1):
         link = build_mtproto_link(item["proxy"])
+        ping = item["ping"]
+        
+        # Цветной статус в зависимости от пинга
+        if ping < 100:
+            status = "🟢 Отличный"
+        elif ping < 150:
+            status = "🟡 Хороший"
+        else:
+            status = "🟠 Приемлемый"
 
         text += (
-            f"{i}️⃣ "
+            f"{i}️⃣ <b>Пинг: {ping}мс</b> {status}\n"
             f'<a href="{link}">Подключить прокси 👈</a>\n\n'
         )
 
@@ -1118,6 +1298,12 @@ async def main():
 
     # 🚀 запускаем очередь (worker)
     asyncio.create_task(worker())
+    
+
+    # 🔄 запускаем фоновую проверку прокси
+    asyncio.create_task(background_proxy_checker())
+    
+    logger.info("✅ Все сервисы запущены: очередь и фоновая проверка прокси")
 
     # запускаем бота
     await dp.start_polling(bot)
