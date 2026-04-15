@@ -43,7 +43,8 @@ DEFAULT_SETTINGS = {
     "sponsor_channel_id": -1002174184458,
     "pin_code": "7080",
     "max_ping": 250,
-    "top_count": 5
+    "top_count": 5,
+    "max_proxy_add_ping": 450
 }
 
 PROXY_SOURCE_URL = (
@@ -108,6 +109,7 @@ class UserStates(StatesGroup):
     waiting_unban_id = State()
     waiting_new_pin = State()
     waiting_new_ping = State()
+    waiting_new_add_ping = State()
 
 # =========================
 # JSON UTILS
@@ -786,6 +788,7 @@ def settings_kb():
         keyboard=[
             [KeyboardButton(text="🔑 Изменить PIN")],
             [KeyboardButton(text="📶 Изменить лимит пинга")],
+            [KeyboardButton(text="🎯 Макс пинг для прокси")],
             [KeyboardButton(text="🧹 Очистить кэш")],
             [KeyboardButton(text="↩️ Назад")]
         ],
@@ -960,6 +963,42 @@ async def save_new_ping(message: types.Message, state: FSMContext):
 
     settings = get_settings()
     settings["max_ping"] = int(message.text)
+    save_settings(settings)
+
+    await state.clear()
+
+    await safe_send(message.chat.id, "✅ Обновлено", reply_markup=settings_kb())
+
+
+@dp.message(F.text == "🎯 Макс пинг для прокси")
+async def add_ping_change_start(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    settings = get_settings()
+    current = settings.get("max_proxy_add_ping", 450)
+
+    await state.set_state(UserStates.waiting_new_add_ping)
+    await safe_send(
+        message.chat.id,
+        f"Текущее значение: {current}мс\n\nВведите новый максимальный пинг для добавления прокси:",
+        reply_markup=cancel_kb()
+    )
+
+
+@dp.message(UserStates.waiting_new_add_ping)
+async def save_add_ping(message: types.Message, state: FSMContext):
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await safe_send(message.chat.id, "Отмена", reply_markup=settings_kb())
+        return
+
+    if not message.text.isdigit():
+        await safe_send(message.chat.id, "Введите число")
+        return
+
+    settings = get_settings()
+    settings["max_proxy_add_ping"] = int(message.text)
     save_settings(settings)
 
     await state.clear()
@@ -1253,13 +1292,16 @@ async def add_proxy_start(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
 
+    settings = get_settings()
+    max_ping = settings.get("max_proxy_add_ping", 450)
+
     await state.set_state(UserStates.waiting_proxy)
 
     await safe_send(
         message.chat.id,
         "Вставь ссылку прокси (tg://proxy?...)\n\n"
         "Можешь отправить несколько — по одной в строке\n"
-        "Бот проверит каждый (пинг макс 450мс) и добавит рабочие 🚀",
+        f"Бот проверит каждый (пинг макс {max_ping}мс) и добавит рабочие 🚀",
         reply_markup=cancel_kb()
     )
 
@@ -1271,12 +1313,15 @@ async def save_proxy(message: types.Message, state: FSMContext):
     Поддерживает:
     - Одну ссылку: tg://proxy?server=...&port=...&secret=...
     - Несколько ссылок через перевод строки
-    - Парсит и проверяет каждый прокси (пинг <= 450мс)
+    - Парсит и проверяет каждый прокси (пинг <= макс из настроек)
     """
     if message.text == "❌ Отмена":
         await state.clear()
         await safe_send(message.chat.id, "Отмена", reply_markup=admin_main_kb())
         return
+
+    settings = get_settings()
+    max_add_ping = settings.get("max_proxy_add_ping", 450)
 
     await safe_send(
         message.chat.id,
@@ -1313,7 +1358,7 @@ async def save_proxy(message: types.Message, state: FSMContext):
             
             if result is None:
                 failed_count += 1
-            elif result["ping"] > 450:
+            elif result["ping"] > max_add_ping:
                 # Пинг слишком большой
                 bad_pings.append(result["ping"])
                 failed_count += 1
