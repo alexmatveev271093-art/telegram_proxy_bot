@@ -5,6 +5,7 @@ import asyncio
 import logging
 import aiohttp
 import struct
+import random
 
 from urllib.parse import urlparse, parse_qs
 
@@ -539,9 +540,14 @@ def build_post(proxies):
     """
     Строит сообщение с прокси.
     Выводит максимум 5 прокси без информации о пинге.
+    Список перетасовывается каждый раз.
     """
+    # Копируем и перетасовываем прокси
+    shuffled_proxies = proxies.copy()
+    random.shuffle(shuffled_proxies)
+    
     # Ограничиваем 5 лучшими
-    top_proxies = proxies[:5]
+    top_proxies = shuffled_proxies[:5]
 
     text = (
         '<a href="https://t.me/+T8J7eXlfvfc5NWNi">🔥 <b>Good Place AI</b> 🤖</a>\n\n'
@@ -554,13 +560,16 @@ def build_post(proxies):
         "━━━━━━━━━━━━━━━\n\n"
     )
 
-    # Выводим прокси без пинга и статуса
+    # Выводим прокси без пинга и статуса с пробелами между ними
     for i, item in enumerate(top_proxies, start=1):
         link = build_mtproto_link(item["proxy"])
         text += (
             f"{i}️⃣ "
-            f'<a href="{link}">Прокси {i}</a>\n'
+            f'<a href="{link}">Подключить прокси 👈</a>\n'
         )
+        # Добавляем пробел между прокси
+        if i < len(top_proxies):
+            text += "\n"
 
     text += (
         "\n━━━━━━━━━━━━━━━\n\n"
@@ -573,17 +582,56 @@ def build_post(proxies):
 # =========================
 # SEND PROXIES
 # =========================
+def build_progress_bar(seconds):
+    """Строит прогресс-бар с шагом в 10 сек"""
+    filled = seconds // 10
+    total = 3  # 30 сек максимум (3 шага по 10 сек)
+    
+    bar = "█" * filled + "░" * (total - filled)
+    return f"[{bar}] {seconds} сек ⏳"
+
+
 async def send_proxies(chat_id):
     try:
-        await safe_send(
+        # Отправляем начальное сообщение
+        initial_msg = await safe_send(
             chat_id,
-            "🔍 Ищу самые быстрые прокси...\nПодожди 10–30 сек ⏳"
+            f"🔍 Ищу самые быстрые прокси...\n\n{build_progress_bar(0)}"
         )
+        
+        # Запускаем поиск прокси и обновление прогресса одновременно
+        start_time = time.time()
+        
+        # Создаем таск поиска прокси
+        search_task = asyncio.create_task(find_best_proxies())
+        
+        # Обновляем прогресс каждые 10 сек пока не будут найдены прокси
+        while not search_task.done():
+            elapsed = int(time.time() - start_time)
+            
+            # Обновляем сообщение каждые 10 сек
+            if elapsed > 0 and elapsed % 10 == 0:
+                try:
+                    progress_text = f"🔍 Ищу самые быстрые прокси...\n\n{build_progress_bar(elapsed)}"
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=initial_msg.message_id,
+                        text=progress_text
+                    )
+                except Exception:
+                    pass  # Игнорируем ошибки при обновлении
+            
+            # Даем задаче время на выполнение
+            try:
+                proxies = await asyncio.wait_for(search_task, timeout=1)
+                break
+            except asyncio.TimeoutError:
+                continue
 
-        proxies = await find_best_proxies()
+        # Получаем результат поиска
+        proxies = await search_task
 
-        # Всегда отправляем прокси, даже если список небольшой
-        # Они отсортированы от лучших к худшим
+        # Формируем финальное сообщение
         if proxies:
             text = build_post(proxies)
         else:
@@ -594,6 +642,7 @@ async def send_proxies(chat_id):
                 "Попробуй позже"
             )
 
+        # Отправляем финальное сообщение
         await safe_send(
             chat_id,
             text,
