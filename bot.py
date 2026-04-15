@@ -96,7 +96,7 @@ def load_json(filename, default):
     try:
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except (FileNotFoundError, json.JSONDecodeError):
         return default
 
 def save_json(filename, data):
@@ -284,7 +284,7 @@ async def check_proxy(proxy):
             "ping": round(ping, 2)
         }
 
-    except:
+    except (OSError, asyncio.TimeoutError, Exception):
         return None
 
 
@@ -442,7 +442,7 @@ async def start_handler(message: types.Message):
     except:
         pass
     
-user_id = message.from_user.id
+    user_id = message.from_user.id
 
     if is_banned(user_id):
         await safe_send(user_id, "⛔ Вы заблокированы")
@@ -856,7 +856,34 @@ async def save_unban(message: types.Message, state: FSMContext):
         await safe_send(message.chat.id, "Ошибка ID")
 
 
-@dp.message(F.text == "📢 Рассылка")
+
+@dp.message(F.text == "🗑 Очистить бан-лист")
+async def clear_banlist(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    save_json(BANS_FILE, [])
+
+    await safe_send(
+        message.chat.id,
+        "✅ Бан-лист очищен",
+        reply_markup=ban_kb()
+    )
+
+
+@dp.message(F.text == "� Пользователи")
+async def users_handler(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    users = load_json(USERS_FILE, [])
+
+    text = f"👥 Всего пользователей: {len(users)}"
+
+    await safe_send(message.chat.id, text, reply_markup=admin_main_kb())
+
+
+@dp.message(F.text == "�📢 Рассылка")
 async def broadcast_start(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
@@ -875,8 +902,8 @@ async def broadcast_send(message: types.Message, state: FSMContext):
         try:
             await bot.send_message(uid, message.text)
             sent += 1
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to send broadcast to {uid}: {e}")
 
     await state.clear()
 
@@ -928,6 +955,20 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 # =========================
 # ADMIN: НАСТРОЙКИ
 # =========================
+@dp.message(F.text == "🧹 Очистить кэш")
+async def clear_cache(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    save_json(CACHE_FILE, [])
+
+    await safe_send(
+        message.chat.id,
+        "✅ Кэш очищен",
+        reply_markup=settings_kb()
+    )
+
+
 @dp.message(F.text == "⚙️ Настройки")
 async def open_settings(message: types.Message):
     if not is_admin(message.from_user.id):
