@@ -6,6 +6,7 @@ import logging
 import aiohttp
 import struct
 import random
+import ipaddress
 
 from urllib.parse import urlparse, parse_qs
 
@@ -60,6 +61,20 @@ MAX_CONCURRENT_CHECKS = 8  # Максимум одновременных про�
 PROXY_CACHE_TTL = 1800  # Кэш на 30 минут в секундах
 PROXY_CHECK_TIMEOUT = 3.0  # Таймаут подключения (увеличен для надежности)
 PROXY_READ_TIMEOUT = 3.0  # Таймаут чтения (увеличен для надежности)
+
+# Retry и Stability
+MAX_PROXY_CHECK_RETRIES = 2  # Повторить проверку если первая попытка провалилась
+RETRY_DELAY = 0.5  # Задержка между повторами в секундах
+MAX_FAILS_BEFORE_SKIP = 5  # Пропустить проверку прокси если он упал столько раз подряд
+PROXY_FAIL_RESET_TIME = 86400  # Сбросить счетчик ошибок через 24 часа
+
+# Валидация
+MIN_VALID_PORT = 1
+MAX_VALID_PORT = 65535
+
+# API Verification (дополнительная проверка через реальные запросы)
+ENABLE_REAL_API_VERIFICATION = False  # Включить проверку через реальные API запросы (может быть медленнее)
+PROXY_API_VERIFY_TIMEOUT = 2.0  # Таймаут для проверки API
 
 # Глобальный Semaphore для ограничения одновременных проверок
 check_semaphore = asyncio.Semaphore(MAX_CONCURRENT_CHECKS)
@@ -303,32 +318,76 @@ async def load_proxy_list():
 # ФУНКЦИИ ДЛЯ РАБОТЫ С МЕРТВЫМИ ПРОКСИ
 # =========================
 def load_dead_proxies():
-    """Загрузить список мертвых прокси"""
-    return load_json(DEAD_PROXIES_FILE, {})
+    """Загрузить список мертвых прокси с поддержкой новой и старой структуры"""
+    dead = load_json(DEAD_PROXIES_FILE, {})
+
+    # Конвертируем старый формат (просто timestamp) в новый (dict с метаданными)
+    for key, value in list(dead.items()):
+        if isinstance(value, (int, float)):  # Старый формат - просто timestamp
+            dead[key] = {
+                "timestamp": value,
+                "fail_count": 1,
+                "last_error": "unknown"
+            }
+
+    return dead
 
 def save_dead_proxies(dead_list):
     """Сохранить список мертвых прокси"""
     save_json(DEAD_PROXIES_FILE, dead_list)
 
-def mark_proxy_dead(proxy_key):
-    """Отметить прокси как мертвый"""
+def mark_proxy_dead(proxy_key, error_type="unknown"):
+    """Отметить прокси как мертвый с информацией об ошибке"""
     dead = load_dead_proxies()
-    dead[proxy_key] = time.time()
+
+    if proxy_key not in dead:
+        dead[proxy_key] = {
+            "timestamp": time.time(),
+            "fail_count": 1,
+            "last_error": error_type
+        }
+    else:
+        # Увеличиваем счетчик ошибок
+        dead[proxy_key]["fail_count"] = dead[proxy_key].get("fail_count", 1) + 1
+        dead[proxy_key]["timestamp"] = time.time()
+        dead[proxy_key]["last_error"] = error_type
+
     save_dead_proxies(dead)
 
 def is_proxy_dead(proxy_key):
-    """Проверить, мертвый ли прокси"""
+    """Проверить, мертвый ли прокси (с учетом счетчика ошибок)"""
     dead = load_dead_proxies()
     if proxy_key not in dead:
         return False
-    
+
+    dead_data = dead[proxy_key]
+    fail_count = dead_data.get("fail_count", 1)
+    timestamp = dead_data.get("timestamp", 0)
+    current_time = time.time()
+
     # Забываем о мертвых прокси через 24 часа
-    if time.time() - dead[proxy_key] > 86400:
+    if current_time - timestamp > PROXY_FAIL_RESET_TIME:
         dead.pop(proxy_key, None)
         save_dead_proxies(dead)
         return False
-    
+
+    # Пропускаем прокси которые много раз подряд упали
+    if fail_count >= MAX_FAILS_BEFORE_SKIP:
+        return True
+
     return True
+
+def get_proxy_stability(proxy_key):
+    """Получить информацию о стабильности прокси"""
+    dead = load_dead_proxies()
+    if proxy_key not in dead:
+        return {"fail_count": 0, "last_error": None}
+
+    data = dead[proxy_key]
+    return {
+        "fail_count": data.get("fail_count", 0),
+        "last_error": data.get("last_error", "unknown")
+    }
 
 def get_proxy_key(proxy):
     """Получить уникальный ключ прокси"""
@@ -336,84 +395,168 @@ def get_proxy_key(proxy):
 
 
 # =========================
-# CHECK PROXY - MTProto с Semaphore
+# ВАЛИДАЦИЯ ПРОКСИ
+# =========================
+def is_valid_ip(ip_str):
+    """Проверить что это валидный IP адрес (IPv4 или IPv6)"""
+    try:
+        ipaddress.ip_address(ip_str)
+        return True
+    except ValueError:
+        return False
+
+def is_public_proxy(ip_str):
+    """Проверить что IP это публичный адрес (не приватный, не loopback)"""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        # Пропускаем приватные, loopback и зарезервированные IP
+        return not (addr.is_private or addr.is_loopback or addr.is_reserved)
+    except ValueError:
+        return False
+
+def is_valid_port(port):
+    """Проверить что порт в валидном диапазоне"""
+    try:
+        port_num = int(port)
+        return MIN_VALID_PORT <= port_num <= MAX_VALID_PORT
+    except (ValueError, TypeError):
+        return False
+
+def validate_proxy(proxy):
+    """Провалидировать прокси перед проверкой"""
+    if not proxy or not isinstance(proxy, dict):
+        return False, "proxy is not a dict"
+
+    # Проверяем обязательные поля
+    if "server" not in proxy or "port" not in proxy:
+        return False, "missing server or port"
+
+    server = proxy.get("server")
+    port = proxy.get("port")
+
+    # Валидируем IP
+    if not is_valid_ip(server):
+        return False, f"invalid ip: {server}"
+
+    # Проверяем что это публичный IP
+    if not is_public_proxy(server):
+        return False, f"private or reserved ip: {server}"
+
+    # Валидируем порт
+    if not is_valid_port(port):
+        return False, f"invalid port: {port}"
+
+    return True, "valid"
+
+
+# =========================
+# CHECK PROXY - MTProto с Semaphore и Retry
 # =========================
 async def check_proxy(proxy):
     """
-    Проверить MTProto прокси через простой handshake.
+    Проверить MTProto прокси через handshake с retry логикой.
     Использует Semaphore для ограничения параллельных проверок.
     Возвращает dict с информацией о прокси и пингом, или None если прокси мертвый
     """
     proxy_key = get_proxy_key(proxy)
-    
+
+    # Валидируем прокси перед проверкой
+    is_valid, error_msg = validate_proxy(proxy)
+    if not is_valid:
+        logger.debug(f"⚠ {proxy_key} - валидация не прошла: {error_msg}")
+        mark_proxy_dead(proxy_key, f"validation_failed: {error_msg}")
+        return None
+
     # Пропускаем уже известные мертвые прокси
     if is_proxy_dead(proxy_key):
-        logger.debug(f"Прокси {proxy_key} уже в списке мертвых")
+        stability = get_proxy_stability(proxy_key)
+        logger.debug(f"⏭ {proxy_key} уже в списке мертвых (ошибок: {stability['fail_count']})")
         return None
-    
+
     logger.debug(f"Начинаю проверку: {proxy_key}")
-    
+
     # Ограничиваем одновременные проверки
     async with check_semaphore:
-        try:
-            start = time.perf_counter()
-            
-            # Подключаемся к прокси-серверу с более строгим таймаутом
-            logger.debug(f"  Подключаюсь к {proxy['server']}:{proxy['port']}...")
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(proxy["server"], proxy["port"]),
-                timeout=PROXY_CHECK_TIMEOUT
-            )
-            logger.debug(f"  ✓ Подключение установлено")
-            
-            # MTProto handshake: отправляем простой ReqPQ
-            req_pq = bytes([0xc6, 0x11, 0xa4, 0x51]) + b'\x00' * 16
-            
+        # Retry логика
+        for attempt in range(MAX_PROXY_CHECK_RETRIES):
             try:
-                logger.debug(f"  Отправляю handshake...")
-                writer.write(req_pq)
-                await asyncio.wait_for(writer.drain(), timeout=PROXY_READ_TIMEOUT)
-                
-                # Пытаемся получить ответ
-                logger.debug(f"  Жду ответа...")
-                response = await asyncio.wait_for(
-                    reader.readexactly(8),
-                    timeout=PROXY_READ_TIMEOUT
+                start = time.perf_counter()
+
+                # Подключаемся к прокси-серверу
+                logger.debug(f"  [{attempt + 1}/{MAX_PROXY_CHECK_RETRIES}] Подключаюсь к {proxy['server']}:{proxy['port']}...")
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(proxy["server"], proxy["port"]),
+                    timeout=PROXY_CHECK_TIMEOUT
                 )
-                
-                ping = (time.perf_counter() - start) * 1000
-                logger.info(f"✓ {proxy_key} - пинг {ping:.1f}мс")
-                
-                writer.close()
-                await writer.wait_closed()
-                
-                # Если получили ответ - прокси хороший
-                return {
-                    "proxy": proxy,
-                    "ping": round(ping, 2)
-                }
-                
-            except asyncio.TimeoutError:
-                logger.warning(f"⏱ {proxy_key} - таймаут (нет ответа)")
-                writer.close()
-                await writer.wait_closed()
-                mark_proxy_dead(proxy_key)
+                logger.debug(f"  ✓ Подключение установлено")
+
+                # MTProto handshake: отправляем ReqPQ
+                req_pq = bytes([0xc6, 0x11, 0xa4, 0x51]) + b'\x00' * 16
+
+                try:
+                    logger.debug(f"  Отправляю handshake...")
+                    writer.write(req_pq)
+                    await asyncio.wait_for(writer.drain(), timeout=PROXY_READ_TIMEOUT)
+
+                    # Пытаемся получить ответ
+                    logger.debug(f"  Жду ответа...")
+                    response = await asyncio.wait_for(
+                        reader.readexactly(8),
+                        timeout=PROXY_READ_TIMEOUT
+                    )
+
+                    ping = (time.perf_counter() - start) * 1000
+                    logger.info(f"✓ {proxy_key} - пинг {ping:.1f}мс")
+
+                    writer.close()
+                    await writer.wait_closed()
+
+                    # Если получили ответ - прокси хороший
+                    return {
+                        "proxy": proxy,
+                        "ping": round(ping, 2)
+                    }
+
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏱ {proxy_key} - таймаут на попытке {attempt + 1}")
+                    writer.close()
+                    await writer.wait_closed()
+
+                    # Retry при таймауте (transient error)
+                    if attempt < MAX_PROXY_CHECK_RETRIES - 1:
+                        await asyncio.sleep(RETRY_DELAY)
+                        continue
+                    else:
+                        mark_proxy_dead(proxy_key, "timeout")
+                        return None
+
+            except (ConnectionRefusedError, ConnectionResetError) as e:
+                error_type = "connection_refused" if isinstance(e, ConnectionRefusedError) else "connection_reset"
+                logger.warning(f"❌ {proxy_key} - {error_type}")
+                # Постоянные ошибки - не retry, сразу mark dead
+                mark_proxy_dead(proxy_key, error_type)
                 return None
-        
-        except OSError as e:
-            logger.warning(f"❌ {proxy_key} - ошибка подключения ({type(e).__name__})")
-            mark_proxy_dead(proxy_key)
-            return None
-        
-        except (ConnectionRefusedError, ConnectionResetError):
-            logger.warning(f"❌ {proxy_key} - соединение отклонено")
-            mark_proxy_dead(proxy_key)
-            return None
-        
-        except Exception as e:
-            logger.warning(f"❌ {proxy_key} - ошибка: {type(e).__name__}: {e}")
-            mark_proxy_dead(proxy_key)
-            return None
+
+            except OSError as e:
+                error_name = type(e).__name__
+                logger.warning(f"❌ {proxy_key} - ошибка подключения ({error_name})")
+
+                # Retry при сетевых ошибках (transient)
+                if attempt < MAX_PROXY_CHECK_RETRIES - 1:
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+                else:
+                    mark_proxy_dead(proxy_key, f"oserror: {error_name}")
+                    return None
+
+            except Exception as e:
+                error_name = type(e).__name__
+                logger.warning(f"❌ {proxy_key} - ошибка: {error_name}: {e}")
+                mark_proxy_dead(proxy_key, f"error: {error_name}")
+                return None
+
+        # Если все retry провалились
+        return None
 
 
 # =========================
