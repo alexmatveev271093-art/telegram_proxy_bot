@@ -32,7 +32,6 @@ CACHE_FILE = "cache.json"
 USERS_FILE = "users.json"
 LOGS_FILE = "logs.json"
 BANS_FILE = "bans.json"
-RESERVE_FILE = "reserve_proxies.json"
 DEAD_PROXIES_FILE = "dead_proxies.json"
 
 # =========================
@@ -47,9 +46,10 @@ DEFAULT_SETTINGS = {
     "max_proxy_add_ping": 450
 }
 
-PROXY_SOURCE_URL = (
+PROXIES_URL = (
     "https://raw.githubusercontent.com/"
-    "SoliSpirit/mtproto/master/all_proxies.txt"
+    "alexmatveev271093-art/telegram_proxy_bot/"
+    "main/proxies.txt"
 )
 
 CHECK_LIMIT = 50
@@ -256,31 +256,42 @@ def cancel_kb():
 # LOAD PROXY
 # =========================
 async def load_proxy_list():
+    """
+    Загружает прокси из GitHub репозитория (proxies.txt)
+    Каждая строка - это ссылка на прокси в формате: tg://proxy?server=...&port=...&secret=...
+    """
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(PROXY_SOURCE_URL, timeout=20) as resp:
+            async with session.get(PROXIES_URL, timeout=20) as resp:
                 text = await resp.text()
 
         proxies = []
 
         for line in text.splitlines():
             line = line.strip()
-
-            if not line:
+            
+            # Пропускаем пустые строки и комментарии
+            if not line or line.startswith('#'):
                 continue
 
-            parsed = urlparse(line)
-            params = parse_qs(parsed.query)
+            try:
+                parsed = urlparse(line)
+                params = parse_qs(parsed.query)
 
-            if not all(k in params for k in ["server", "port", "secret"]):
+                if not all(k in params for k in ["server", "port", "secret"]):
+                    logger.debug(f"Неправильный формат: {line[:50]}...")
+                    continue
+
+                proxies.append({
+                    "server": params["server"][0],
+                    "port": int(params["port"][0]),
+                    "secret": params["secret"][0]
+                })
+            except Exception as e:
+                logger.debug(f"Ошибка парсинга строки: {e}")
                 continue
 
-            proxies.append({
-                "server": params["server"][0],
-                "port": int(params["port"][0]),
-                "secret": params["secret"][0]
-            })
-
+        logger.info(f"Загружено {len(proxies)} прокси с GitHub")
         return proxies
 
     except Exception as e:
@@ -529,8 +540,7 @@ def build_mtproto_link(proxy):
 def build_post(proxies):
     """
     Строит сообщение с прокси.
-    Выводит максимум 5 лучших прокси по пингу.
-    Резерв удален - все идет в основной список.
+    Выводит максимум 5 прокси без информации о пинге.
     """
     # Ограничиваем 5 лучшими
     top_proxies = proxies[:5]
@@ -542,31 +552,21 @@ def build_post(proxies):
         '▶️ <a href="https://www.youtube.com/@gd_place">YouTube</a>\n\n'
         "━━━━━━━━━━━━━━━\n\n"
         "🚀 <b>СВЕЖИЕ прокси для Telegram 👇</b>\n\n"
-        "(если не зашёл 🤔 — попробуй следующий 😉 — разлетаются как пирожки 🔥)\n\n"
+        "(если не зашёл 🤔 — попробуй следующий 😉)\n\n"
         "━━━━━━━━━━━━━━━\n\n"
     )
 
-    # Основные прокси с пингом (максимум 5)
+    # Выводим прокси без пинга и статуса
     for i, item in enumerate(top_proxies, start=1):
         link = build_mtproto_link(item["proxy"])
-        ping = item["ping"]
-        
-        # Цветной статус в зависимости от пинга
-        if ping < 100:
-            status = "🟢 Отличный"
-        elif ping < 150:
-            status = "🟡 Хороший"
-        else:
-            status = "🟠 Приемлемый"
-
         text += (
-            f"{i}️⃣ <b>Пинг: {ping}мс</b> {status}\n"
-            f'<a href="{link}">Подключить прокси 👈</a>\n\n'
+            f"{i}️⃣ "
+            f'<a href="{link}">Прокси {i}</a>\n'
         )
 
     text += (
-        "━━━━━━━━━━━━━━━\n\n"
-        "✅ <b>Поделись с другом 😉</b>"
+        "\n━━━━━━━━━━━━━━━\n\n"
+        "✅ <b>ПОДЕЛИСЬ с друзьями 😉</b>"
     )
 
     return text
