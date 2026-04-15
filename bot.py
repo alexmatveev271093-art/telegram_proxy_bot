@@ -43,7 +43,7 @@ DEFAULT_SETTINGS = {
     "sponsor_link": "https://t.me/+T8J7eXlfvfc5NWNi",
     "sponsor_channel_id": -1002174184458,
     "pin_code": "7080",
-    "max_ping": 250,
+    "max_ping": 750,
     "top_count": 5
 }
 
@@ -617,12 +617,15 @@ async def send_proxies(chat_id):
         # Создаем таск поиска прокси
         search_task = asyncio.create_task(find_best_proxies())
         
+        # Флаг для отслеживания обновлений
+        last_update = 0
+        
         # Обновляем прогресс каждые 10 сек пока не будут найдены прокси
         while not search_task.done():
             elapsed = int(time.time() - start_time)
             
-            # Обновляем сообщение каждые 10 сек
-            if elapsed > 0 and elapsed % 10 == 0:
+            # Обновляем сообщение каждые 10 сек (или при первом обновлении)
+            if elapsed > 0 and (elapsed % 10 == 0 and elapsed != last_update):
                 try:
                     progress_text = f"🔍 Ищу самые быстрые прокси...\n\n{build_progress_bar(elapsed)}"
                     await bot.edit_message_text(
@@ -630,6 +633,7 @@ async def send_proxies(chat_id):
                         message_id=initial_msg.message_id,
                         text=progress_text
                     )
+                    last_update = elapsed
                 except Exception:
                     pass  # Игнорируем ошибки при обновлении
             
@@ -639,6 +643,7 @@ async def send_proxies(chat_id):
                 break
             except asyncio.TimeoutError:
                 continue
+            await asyncio.sleep(0.1)  # Чтобы не загружать CPU
 
         # Получаем результат поиска
         proxies = await search_task
@@ -796,15 +801,39 @@ async def proxy_handler(message: types.Message):
         if user_id in USER_TIMER_TASKS:
             return
 
-        await safe_send(
+        # Отправляем начальное сообщение с прогресс-баром
+        timer_msg = await safe_send(
             user_id,
-            f"⏳ Подожди немного перед следующим запросом ({int(remaining)} сек)",
+            f"⏳ Подожди перед следующим запросом\n\n{build_progress_bar(int(remaining))}",
             reply_markup=None
         )
 
-        # создаём таймер
+        # создаём таймер с обновлением прогресса
         async def delayed_send():
-            await asyncio.sleep(remaining)
+            start_time = time.time()
+            total_wait = remaining
+            last_update = 0
+            
+            while True:
+                elapsed = time.time() - start_time
+                remaining_now = total_wait - elapsed
+                
+                if remaining_now <= 0:
+                    break
+                
+                # Обновляем каждые 10 сек
+                if int(remaining_now) % 10 != last_update % 10:
+                    last_update = int(remaining_now)
+                    try:
+                        await bot.edit_message_text(
+                            chat_id=user_id,
+                            message_id=timer_msg.message_id,
+                            text=f"⏳ Подожди перед следующим запросом\n\n{build_progress_bar(int(remaining_now))}"
+                        )
+                    except Exception:
+                        pass
+                
+                await asyncio.sleep(1)
 
             USER_LAST_REQUEST[user_id] = time.time()
 
