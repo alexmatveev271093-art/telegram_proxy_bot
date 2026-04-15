@@ -42,8 +42,7 @@ DEFAULT_SETTINGS = {
     "sponsor_channel_id": -1002174184458,
     "pin_code": "7080",
     "max_ping": 250,
-    "top_count": 5,
-    "max_proxy_add_ping": 450
+    "top_count": 5
 }
 
 PROXIES_URL = (
@@ -113,7 +112,6 @@ class UserStates(StatesGroup):
     waiting_unban_id = State()
     waiting_new_pin = State()
     waiting_new_ping = State()
-    waiting_new_add_ping = State()
 
 # =========================
 # JSON UTILS
@@ -806,8 +804,7 @@ def settings_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔑 Изменить PIN")],
-            [KeyboardButton(text="📶 Изменить лимит пинга")],
-            [KeyboardButton(text="🎯 Макс пинг для прокси")],
+            [KeyboardButton(text="📶 Максимальный пинг для прокси")],
             [KeyboardButton(text="🧹 Очистить кэш")],
             [KeyboardButton(text="↩️ Назад")]
         ],
@@ -960,13 +957,20 @@ async def save_new_pin(message: types.Message, state: FSMContext):
     await safe_send(message.chat.id, "✅ PIN обновлён", reply_markup=settings_kb())
 
 
-@dp.message(F.text == "📶 Изменить лимит пинга")
+@dp.message(F.text == "📶 Максимальный пинг для прокси")
 async def ping_change_start(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
 
+    settings = get_settings()
+    current = settings.get("max_ping", 250)
+
     await state.set_state(UserStates.waiting_new_ping)
-    await safe_send(message.chat.id, "Введите новый пинг:", reply_markup=cancel_kb())
+    await safe_send(
+        message.chat.id,
+        f"Текущее значение: {current}мс\n\nВведите новый максимальный пинг для отображения прокси:",
+        reply_markup=cancel_kb()
+    )
 
 
 @dp.message(UserStates.waiting_new_ping)
@@ -982,42 +986,6 @@ async def save_new_ping(message: types.Message, state: FSMContext):
 
     settings = get_settings()
     settings["max_ping"] = int(message.text)
-    save_settings(settings)
-
-    await state.clear()
-
-    await safe_send(message.chat.id, "✅ Обновлено", reply_markup=settings_kb())
-
-
-@dp.message(F.text == "🎯 Макс пинг для прокси")
-async def add_ping_change_start(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-
-    settings = get_settings()
-    current = settings.get("max_proxy_add_ping", 450)
-
-    await state.set_state(UserStates.waiting_new_add_ping)
-    await safe_send(
-        message.chat.id,
-        f"Текущее значение: {current}мс\n\nВведите новый максимальный пинг для добавления прокси:",
-        reply_markup=cancel_kb()
-    )
-
-
-@dp.message(UserStates.waiting_new_add_ping)
-async def save_add_ping(message: types.Message, state: FSMContext):
-    if message.text == "❌ Отмена":
-        await state.clear()
-        await safe_send(message.chat.id, "Отмена", reply_markup=settings_kb())
-        return
-
-    if not message.text.isdigit():
-        await safe_send(message.chat.id, "Введите число")
-        return
-
-    settings = get_settings()
-    settings["max_proxy_add_ping"] = int(message.text)
     save_settings(settings)
 
     await state.clear()
