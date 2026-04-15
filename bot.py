@@ -81,7 +81,11 @@ USER_TIMER_TASKS = {}
 # =========================
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler("bot.log", mode="a", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
 )
 
 logger = logging.getLogger(__name__)
@@ -333,7 +337,10 @@ async def check_proxy(proxy):
     
     # Пропускаем уже известные мертвые прокси
     if is_proxy_dead(proxy_key):
+        logger.debug(f"Прокси {proxy_key} уже в списке мертвых")
         return None
+    
+    logger.debug(f"Начинаю проверку: {proxy_key}")
     
     # Ограничиваем одновременные проверки
     async with check_semaphore:
@@ -341,25 +348,30 @@ async def check_proxy(proxy):
             start = time.perf_counter()
             
             # Подключаемся к прокси-серверу с более строгим таймаутом
+            logger.debug(f"  Подключаюсь к {proxy['server']}:{proxy['port']}...")
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(proxy["server"], proxy["port"]),
                 timeout=PROXY_CHECK_TIMEOUT
             )
+            logger.debug(f"  ✓ Подключение установлено")
             
             # MTProto handshake: отправляем простой ReqPQ
             req_pq = bytes([0xc6, 0x11, 0xa4, 0x51]) + b'\x00' * 16
             
             try:
+                logger.debug(f"  Отправляю handshake...")
                 writer.write(req_pq)
                 await asyncio.wait_for(writer.drain(), timeout=PROXY_READ_TIMEOUT)
                 
                 # Пытаемся получить ответ
+                logger.debug(f"  Жду ответа...")
                 response = await asyncio.wait_for(
                     reader.readexactly(8),
                     timeout=PROXY_READ_TIMEOUT
                 )
                 
                 ping = (time.perf_counter() - start) * 1000
+                logger.info(f"✓ {proxy_key} - пинг {ping:.1f}мс")
                 
                 writer.close()
                 await writer.wait_closed()
@@ -371,17 +383,24 @@ async def check_proxy(proxy):
                 }
                 
             except asyncio.TimeoutError:
+                logger.warning(f"⏱ {proxy_key} - таймаут (нет ответа)")
                 writer.close()
                 await writer.wait_closed()
                 mark_proxy_dead(proxy_key)
                 return None
         
-        except (OSError, ConnectionRefusedError, asyncio.TimeoutError, ConnectionResetError):
+        except OSError as e:
+            logger.warning(f"❌ {proxy_key} - ошибка подключения ({type(e).__name__})")
+            mark_proxy_dead(proxy_key)
+            return None
+        
+        except (ConnectionRefusedError, ConnectionResetError):
+            logger.warning(f"❌ {proxy_key} - соединение отклонено")
             mark_proxy_dead(proxy_key)
             return None
         
         except Exception as e:
-            logger.debug(f"Ошибка проверки прокси {proxy_key}: {e}")
+            logger.warning(f"❌ {proxy_key} - ошибка: {type(e).__name__}: {e}")
             mark_proxy_dead(proxy_key)
             return None
 
@@ -1315,6 +1334,9 @@ async def save_proxy(message: types.Message, state: FSMContext):
     - Несколько ссылок через перевод строки
     - Парсит и проверяет каждый прокси (пинг <= макс из настроек)
     """
+    chat_id = message.chat.id
+    logger.info(f"=== НАЧАЛО ДОБАВЛЕНИЯ ПРОКСИ (чат {chat_id}) ===")
+    
     if message.text == "❌ Отмена":
         await state.clear()
         await safe_send(message.chat.id, "Отмена", reply_markup=admin_main_kb())
@@ -1322,6 +1344,7 @@ async def save_proxy(message: types.Message, state: FSMContext):
 
     settings = get_settings()
     max_add_ping = settings.get("max_proxy_add_ping", 450)
+    logger.info(f"Макс пинг для добавления: {max_add_ping}мс")
 
     await safe_send(
         message.chat.id,
@@ -1331,13 +1354,15 @@ async def save_proxy(message: types.Message, state: FSMContext):
     # Парсим текст - может быть несколько прокси
     lines = message.text.strip().split('\n')
     proxy_links = [line.strip() for line in lines if line.strip()]
+    logger.info(f"Получено ссылок: {len(proxy_links)}")
     
     added_count = 0
     failed_count = 0
     bad_pings = []
     
     # Проверяем каждый прокси
-    for link in proxy_links:
+    for idx, link in enumerate(proxy_links, 1):
+        logger.info(f"[{idx}/{len(proxy_links)}] Парсим ссылку: {link[:50]}...")
         try:
             # Парсим ссылку
             parsed = urlparse(link)
@@ -1388,6 +1413,8 @@ async def save_proxy(message: types.Message, state: FSMContext):
             logger.error(f"Ошибка парсинга прокси '{link}': {e}")
     
     # Формируем ответ
+    logger.info(f"=== ИТОГ: добавлено={added_count}, не прошли={failed_count}, пинг>{max_add_ping}={len(bad_pings)} ===")
+    
     response_text = f"✅ Результат:\n\n"
     response_text += f"✔️ Добавлено: {added_count}\n"
     response_text += f"❌ Не прошли проверку: {failed_count}\n"
@@ -1395,7 +1422,7 @@ async def save_proxy(message: types.Message, state: FSMContext):
     if bad_pings:
         response_text += f"⚠️ Пинг > {max_add_ping}мс: {len(bad_pings)}\n"
     
-    response_text += f"\n<code>Логи в боте (боковое меню)</code>"
+    response_text += f"\n<code>Логи в файле bot.log</code>"
     
     await state.clear()
     await safe_send(message.chat.id, response_text, reply_markup=admin_main_kb())
