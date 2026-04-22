@@ -3,31 +3,8 @@
 # Каждая ссылка на отдельной строке
 # Добавляй новые прокси сюда вручную
 
-tg://proxy?server=de.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-tg://proxy?server=nl.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-tg://proxy?server=ru.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-tg://proxy?server=connect.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-tg://proxy?server=live.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-tg://proxy?server=secure.nuv.su&port=443&secret=dd470cb2b8b29aeadfbdf8a2f7bee5ca3b
-tg://proxy?server=ger1.agera-connect.lol&port=443&secret=7hN4AYI19EDOPMIdaJ2ydbxnZXIxLmFnZXJhLWNvbm5lY3QubG9s
 https://t.me/proxy?server=nc.netghost-1.top&port=443&secret=7vbdwl79pEAlsZjXDLK5Y5N5YW5kZXgucnU
-https://t.me/proxy?server=nb.netghost-1.top&port=443&secret=7pLP9j-XkMu9bUEBDQtQP015YW5kZXgucnU
-https://t.me/proxy?server=ger1.belle.gold&port=443&secret=7jwaiwUr8xH8YO6VtFORqSF5YS5ydQ
-https://t.me/proxy?server=msk.senkapopka.ru&port=5443&secret=7mKItNXZUmyNYM-AUufrDTRtc2suc2Vua2Fwb3BrYS5ydQ
-https://t.me/proxy?server=77.105.169.123&port=2055&secret=7k7l627wZ2-ROAJNfoBIi255YW5kZXgucnU
-https://t.me/proxy?server=5.42.106.72&port=2057&secret=7r6LFX416K1tM0A0GjPjexp5YW5kZXgucnU
-https://t.me/proxy?server=anarchy.click&port=443&secret=7nEYx5Km2hVjbMl1O_kM_C1icm93c2VyLnlhbmRleC5jb20
-https://t.me/proxy?server=mt5.nmshhub.net&port=443&secret=7rBDMEl-0jn9Of_SHcmKuQB3d3cuZ29zdXNsdWdpLnJ1
-https://t.me/proxy?server=80.249.148.51&port=2055&secret=7sRuJKDn425NftZxFlCzsTJ5YW5kZXgucnU
-https://t.me/proxy?server=95.85.235.145&port=443&secret=7u8LHkYiNZ5VRGIv6SzkkHZ5YS5ydQ
-https://t.me/proxy?server=109.122.196.44&port=443&secret=7sGxi5OykTP379OP-gS04Lp5YS5ydQ
-https://t.me/proxy?server=95.85.235.145&port=443&secret=7tu1csMO6j7-Ct8JdKdV8YR5YS5ydQ
-https://t.me/proxy?server=109.122.196.44&port=443&secret=7qcrDdAP_lmfIR4wOqBgi5p5YS5ydQ
 https://t.me/proxy?server=100.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-https://t.me/proxy?server=secure.nuv.su&port=443&secret=dd470cb2b8b29aeadfbdf8a2f7bee5ca3b
-https://t.me/proxy?server=ger1.agera-connect.lol&port=443&secret=7hN4AYI19EDOPMIdaJ2ydbxnZXIxLmFnZXJhLWNvbm5lY3QubG9s
-https://t.me/proxy?server=nl.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-https://t.me/proxy?server=de.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-https://t.me/proxy?server=ru.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-https://t.me/proxy?server=connect.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
-https://t.me/proxy?server=live.mtproxy.me&port=443&secret=7j81T4blniwWbIMDF3LZLWN5YS5ydQ
+https://t.me/proxy?server=109.122.196.44&port=443&secret=7sGxi5OykTP379OP-gS04Lp5YS5ydQ
+https://t.me/proxy?server=mt5.nmshhub.net&port=443&secret=7rBDMEl-0jn9Of_SHcmKuQB3d3cuZ29zdXNsdWdpLnJ1
+https://t.me/proxy?server=77.105.169.123&port=2055&secret=7k7l627wZ2-ROAJNfoBIi255YW5kZXgucnU
