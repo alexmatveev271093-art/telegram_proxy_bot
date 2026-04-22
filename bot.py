@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import time
 import asyncio
@@ -562,11 +562,6 @@ def build_post(proxies):
     top_proxies = shuffled_proxies[:5]
 
     text = (
-        '<a href="https://t.me/+T8J7eXlfvfc5NWNi">🔥 <b>Good Place AI</b> 🤖</a>\n\n'
-        "⚡️ Здесь: AI • Мемы • Польза\n\n"
-        '📱 <a href="https://www.tiktok.com/@good_place_67">TikTok</a> | '
-        '▶️ <a href="https://www.youtube.com/@gd_place">YouTube</a>\n\n'
-        "━━━━━━━━━━━━━━━\n\n"
         "🚀 <b>СВЕЖИЕ прокси для Telegram 👇</b>\n\n"
         "(если не зашёл 🤔 — попробуй следующий 😉)\n\n"
         "━━━━━━━━━━━━━━━\n\n"
